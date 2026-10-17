@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { login, signup } from '../api';
 
 export interface AuthUser {
   email: string;
@@ -48,35 +49,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
 
     const performAuth = async () => {
       try {
-        const endpoint = isSignUp ? '/api/auth/signup' : '/api/auth/login';
-        const payload = isSignUp
-          ? { email, password, role: selectedRole }
-          : { email, password };
+        const data = isSignUp
+          ? await signup(email, password, selectedRole)
+          : await login(email, password);
 
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          // If backend returns a specific validation or auth error
-          if (res.status === 400 || res.status === 401) {
-            setErrorMsg(data.error || 'Authentication failed. Please verify credentials.');
-            setIsLoading(false);
-            return;
-          }
-        }
-
-        // On successful auth response or local fallback
         const returnedRole = data.user?.role || selectedRole;
-        // Derive a readable display name from email when none is provided
         const derivedName = email
           .split('@')[0]
           .replace(/[._-]+/g, ' ')
           .replace(/\b\w/g, (c) => c.toUpperCase());
+
         const user: AuthUser = {
           email,
           role: returnedRole as 'buyer' | 'manufacturer',
@@ -84,26 +66,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
           companyName: companyName || data.user?.companyName || '',
         };
 
-        if (data.session?.access_token) {
-          localStorage.setItem('sourcingo_token', data.session.access_token);
-        }
-
         setIsLoading(false);
         onLoginSuccess(user);
-      } catch {
-        // Graceful offline development fallback
+      } catch (err: any) {
         setIsLoading(false);
-        const derivedName = email
-          .split('@')[0]
-          .replace(/[._-]+/g, ' ')
-          .replace(/\b\w/g, (c) => c.toUpperCase());
-        const user: AuthUser = {
-          email,
-          role: selectedRole,
-          name: contactName || derivedName,
-          companyName: companyName || '',
-        };
-        onLoginSuccess(user);
+        setErrorMsg(err?.message || 'Authentication failed. Please try again.');
       }
     };
 
@@ -230,7 +197,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
                 </label>
                 <input
                   type="text"
-                  placeholder={selectedRole === 'buyer' ? 'e.g. Elena Rostova (Procurement VP)' : 'e.g. Marcus Vogel (Plant Director)'}
+                  placeholder={
+                    selectedRole === 'buyer'
+                      ? 'e.g. Elena Rostova (Procurement VP)'
+                      : 'e.g. Marcus Vogel (Plant Director)'
+                  }
                   value={contactName}
                   onChange={(e) => setContactName(e.target.value)}
                   className="w-full px-3 py-2 text-[12.5px] bg-[#f5f3f0] rounded-xl border border-transparent focus:border-[#6c151e] focus:bg-white focus:outline-none transition-colors"
@@ -239,11 +210,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
 
               <div>
                 <label className="text-[10.5px] font-bold text-[#564241] uppercase tracking-wider block mb-1">
-                  {selectedRole === 'buyer' ? 'Corporate Procurement Entity' : 'Manufacturing Enterprise Name'}
+                  {selectedRole === 'buyer'
+                    ? 'Corporate Procurement Entity'
+                    : 'Manufacturing Enterprise Name'}
                 </label>
                 <input
                   type="text"
-                  placeholder={selectedRole === 'buyer' ? 'e.g. BMW Group Munich HQ' : 'e.g. Apex Precision Systems GmbH'}
+                  placeholder={
+                    selectedRole === 'buyer'
+                      ? 'e.g. BMW Group Munich HQ'
+                      : 'e.g. Apex Precision Systems GmbH'
+                  }
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
                   className="w-full px-3 py-2 text-[12.5px] bg-[#f5f3f0] rounded-xl border border-transparent focus:border-[#6c151e] focus:bg-white focus:outline-none transition-colors"
@@ -276,7 +253,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
             </label>
             <input
               type="email"
-              placeholder={selectedRole === 'buyer' ? 'name@automotive-tier1.com' : 'sales@machining-plant.de'}
+              placeholder={
+                selectedRole === 'buyer'
+                  ? 'name@automotive-tier1.com'
+                  : 'sales@machining-plant.de'
+              }
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3 py-2 text-[12.5px] bg-[#f5f3f0] rounded-xl border border-transparent focus:border-[#6c151e] focus:bg-white focus:outline-none transition-colors"
