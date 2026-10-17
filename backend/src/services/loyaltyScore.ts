@@ -1,16 +1,16 @@
 
-interface LoyaltyOrder {
+export interface LoyaltyOrder {
   orderId: string;
   orderStatus: string;
   shippingOrDeliveryDate: string | null;
   balanceDue: number;
   balancePaid: number;
   paidAt: string | null;
-  dueDate: string;
+  dueDate: string | null;
   currency: string;
 }
 
-interface LoyaltyScoreResult {
+export interface LoyaltyScoreResult {
   customerId: string;
   loyaltyScore: number | null;
   ordersEvaluated: number;
@@ -19,139 +19,153 @@ interface LoyaltyScoreResult {
   overdueBalance: number;
 }
 
+const EXCLUDED_STATUSES = new Set([
+  "cancelled",
+  "canceled",
+  "disputed",
+]);
+
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+function roundToTwo(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function isValidDate(value: string | null): value is string {
+  return value !== null && Number.isFinite(Date.parse(value));
+}
+
 export function calculateLoyaltyScore(
   customerId: string,
   orders: LoyaltyOrder[],
-  asOfDate: string = new Date().toISOString()
+  asOfDate: Date = new Date()
 ): LoyaltyScoreResult {
-  const eligibleOrders = orders.filter(order => {
-    const status = order.orderStatus.toLowerCase();
-
-    return (
-      !["cancelled", "canceled", "disputed"].includes(status) &&
-      order.balanceDue > 0
-    );
-  });
-
-  let punctualityTotal = 0;
-  let totalBalanceDue = 0;
-  let totalBalancePaid = 0;
-  let totalDelayDays = 0;
-  let overdueBalance = 0;
-  let settledOrders = 0;
-  let onTimeOrders = 0;
-  let evaluatedOrders = 0;
-
-  const now = Date.parse(asOfDate);
-
-  if (!Number.isFinite(now)) {
-    throw new Error("Invalid evaluation date");
+  if (!Number.isFinite(asOfDate.getTime())) {
+    throw new Error("Invalid score reference date");
   }
 
-  for (const order of eligibleOrders) {
+  const referenceTime = asOfDate.getTime();
+
+  const validOrders = orders.filter((order) => {
+    if (EXCLUDED_STATUSES.has(order.orderStatus.toLowerCase())) {
+      return false;
+    }
+
+    if (!isValidDate(order.dueDate)) {
+      return false;
+    }
+
+    if (Date.parse(order.dueDate) > referenceTime) {
+      // Future payment obligations do not affect the score yet.
+      return false;
+    }
+
     if (
       !Number.isFinite(order.balanceDue) ||
       !Number.isFinite(order.balancePaid) ||
-      order.balanceDue < 0 ||
+      order.balanceDue <= 0 ||
       order.balancePaid < 0 ||
       order.balancePaid > order.balanceDue
     ) {
-      throw new Error(`Invalid balance for order ${order.orderId}`);
+      return false;
     }
 
-    const dueDate = Date.parse(order.dueDate);
-
-    if (!Number.isFinite(dueDate)) {
-      throw new Error(`Invalid dueDate for order ${order.orderId}`);
+    if (order.paidAt !== null && !isValidDate(order.paidAt)) {
+      return false;
     }
 
-    const isSettled = order.balancePaid === order.balanceDue;
+    return true;
+  });
 
-    // Orders that are not yet due must not be penalized.
-    if (!isSettled && now <= dueDate) {
-      continue;
-    }
-
-    if (isSettled && !order.paidAt) {
-      throw new Error(`Missing paidAt for ${order.orderId}`);
-    }
-
-    const referenceDate = isSettled
-      ? Date.parse(order.paidAt!)
-      : now;
-
-    if (!Number.isFinite(referenceDate)) {
-      throw new Error(`Invalid paidAt for ${order.orderId}`);
-    }
-
-    const delayDays = Math.max(
-      0,
-      Math.floor((referenceDate - dueDate) / 86400000)
-    );
-
-    // 100 points on time, minus 10 points per late day.
-    const punctualityScore = Math.max(
-      0,
-      100 - delayDays * 10
-    );
-
-    punctualityTotal += punctualityScore;
-    totalBalanceDue += order.balanceDue;
-    totalBalancePaid += order.balancePaid;
-    totalDelayDays += delayDays;
-    evaluatedOrders++;
-
-    if (isSettled) {
-      settledOrders++;
-
-      if (referenceDate <= dueDate) {
-        onTimeOrders++;
-      }
-    } else {
-      overdueBalance += order.balanceDue - order.balancePaid;
-    }
-  }
-
-  if (evaluatedOrders === 0) {
+  if (validOrders.length === 0) {
     return {
       customerId,
       loyaltyScore: null,
       ordersEvaluated: 0,
       onTimePaymentRate: null,
       averageDelayDays: null,
-      overdueBalance: 0
+      overdueBalance: 0,
     };
   }
 
-  const punctuality = punctualityTotal / evaluatedOrders;
+  let totalDue = 0;
+  let totalPaid = 0;
+  let onTimeOrders = 0;
+  let totalDelayDays = 0;
+  let overdueBalance = 0;
 
-  const paymentCompletion =
-    totalBalanceDue > 0
-      ? (totalBalancePaid / totalBalanceDue) * 100
-      : 100;
+  for (const order of validOrders) {
+    const dueTime = Date.parse(order.dueDate!);
+    const paid = order.balancePaid;
+    const due = order.balanceDue;
+    const isFullyPaid = paid >= due;
 
-  const averageDelay = totalDelayDays / evaluatedOrders;
+    totalDue += due;
+    totalPaid += paid;
 
-  const consistency = Math.max(
+    // Outstanding balance is the unpaid portion of this obligation.
+    const outstanding = Math.max(0, due - paid);
+
+    if (!isFullyPaid && referenceTime > dueTime) {
+      overdueBalance += outstanding;
+    }
+
+    if (isFullyPaid && order.paidAt !== null) {
+      const paymentTime = Date.parse(order.paidAt);
+
+      if (paymentTime <= dueTime) {
+        onTimeOrders++;
+      }
+
+      totalDelayDays += Math.max(
+        0,
+        Math.floor((paymentTime - dueTime) / DAY_IN_MS)
+      );
+    } else if (!isFullyPaid) {
+      // An unpaid obligation that is already due counts as late.
+      const delayDays = Math.max(
+        0,
+        Math.floor((referenceTime - dueTime) / DAY_IN_MS)
+      );
+
+      totalDelayDays += delayDays;
+    } else {
+      // Fully paid but without a reliable payment timestamp:
+      // do not assume it was paid on time.
+      totalDelayDays += 0;
+    }
+  }
+
+  const onTimePaymentRate =
+    (onTimeOrders / validOrders.length) * 100;
+
+  const paymentCompletionRate =
+    Math.min(100, (totalPaid / totalDue) * 100);
+
+  const averageDelayDays =
+    totalDelayDays / validOrders.length;
+
+  const punctualityScore = onTimePaymentRate;
+
+  const consistencyScore = Math.max(
     0,
-    100 - averageDelay * 10
+    100 - averageDelayDays * 10
   );
 
-  const loyaltyScore = Math.round(
-    punctuality * 0.60 +
-    paymentCompletion * 0.25 +
-    consistency * 0.15
-  );
+  const rawScore =
+    punctualityScore * 0.6 +
+    paymentCompletionRate * 0.25 +
+    consistencyScore * 0.15;
 
   return {
     customerId,
-    loyaltyScore,
-    ordersEvaluated: evaluatedOrders,
-    onTimePaymentRate:
-      settledOrders > 0
-        ? Math.round((onTimeOrders / settledOrders) * 100)
-        : null,
-    averageDelayDays: Math.round(averageDelay * 10) / 10,
-    overdueBalance: Math.round(overdueBalance * 100) / 100
+    loyaltyScore: Math.max(
+      0,
+      Math.min(100, Math.round(rawScore))
+    ),
+    ordersEvaluated: validOrders.length,
+    onTimePaymentRate: roundToTwo(onTimePaymentRate),
+    averageDelayDays: roundToTwo(averageDelayDays),
+    overdueBalance: roundToTwo(overdueBalance),
   };
 }
