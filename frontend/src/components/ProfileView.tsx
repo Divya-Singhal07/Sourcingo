@@ -1,8 +1,28 @@
 import React, { useState } from 'react';
 
-export const ProfileView: React.FC = () => {
-  const [rolePerspective, setRolePerspective] = useState<'buyer' | 'oem'>('buyer');
+interface ProfileViewProps {
+  onOpenVerificationDossiers?: () => void;
+  onOpenMatchHistory?: () => void;
+  onOpenActiveRfqs?: () => void;
+  onSignOut?: () => void;
+  currentUser?: { name: string; companyName: string; role: string; avatar?: string; email?: string } | null;
+  onUpdateAvatar?: (avatarUrl: string) => void;
+}
+
+export const ProfileView: React.FC<ProfileViewProps> = ({
+  onOpenVerificationDossiers,
+  onOpenMatchHistory,
+  onOpenActiveRfqs,
+  onSignOut,
+  currentUser,
+  onUpdateAvatar,
+}) => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const isBuyer = currentUser?.role !== 'manufacturer';
+  const accentColor = isBuyer ? '#6c151e' : '#3b6662';
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -12,498 +32,396 @@ export const ProfileView: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col relative w-full pb-safe bg-[#fbf9f6] select-none">
       <div className="flex flex-col w-full pb-10 max-w-md mx-auto">
-        {/* Segmented Executive Perspective Switcher (Exact Stitch Screen 3) */}
-        <div className="px-5 pt-3 pb-2">
-          <div className="bg-[#eae8e5] p-1 rounded-xl flex items-center justify-between relative shadow-sm">
-            <button
-              id="btn-buyer-view"
-              onClick={() => {
-                setRolePerspective('buyer');
-                showToast('Switched to Procurement Buyer Perspective');
-              }}
-              className={`flex-1 py-2 px-2 rounded-lg text-center font-medium text-xs transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer ${
-                rolePerspective === 'buyer'
-                  ? 'bg-[#6c151e] text-white shadow-sm'
-                  : 'text-[#564241] hover:text-[#1b1c1a]'
-              }`}
-              type="button"
+
+        {/* Role Badge Banner — locked to registered role, no switcher */}
+        <div className="px-5 pt-4 pb-2">
+          <div
+            className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl"
+            style={{ backgroundColor: isBuyer ? '#fff3f3' : '#edf7f6', border: `1px solid ${accentColor}20` }}
+          >
+            <div
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-white"
+              style={{ backgroundColor: accentColor }}
             >
-              <span className="material-symbols-outlined text-[16px]">shopping_bag</span>
-              <span>Procurement Buyer</span>
-            </button>
-            <button
-              id="btn-oem-view"
-              onClick={() => {
-                setRolePerspective('oem');
-                showToast('Switched to OEM Fabricator Perspective');
-              }}
-              className={`flex-1 py-2 px-2 rounded-lg text-center font-medium text-xs transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer ${
-                rolePerspective === 'oem'
-                  ? 'bg-[#3b6662] text-white shadow-sm'
-                  : 'text-[#564241] hover:text-[#1b1c1a]'
-              }`}
-              type="button"
-            >
-              <span className="material-symbols-outlined text-[16px]">precision_manufacturing</span>
-              <span>OEM Manufacturer</span>
-            </button>
-          </div>
-          <div className="flex items-center justify-between mt-2.5 px-1">
-            <div className="flex items-center gap-1.5 text-[#564241]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#3b6662]"></span>
+              <span className="material-symbols-outlined text-[16px]">
+                {isBuyer ? 'shopping_bag' : 'precision_manufacturing'}
+              </span>
+            </div>
+            <div>
+              <p className="text-[12px] font-bold uppercase tracking-wider" style={{ color: accentColor }}>
+                {isBuyer ? 'Procurement Buyer Account' : 'OEM Manufacturer Account'}
+              </p>
               <p className="text-[11px] text-[#564241]">
-                {rolePerspective === 'buyer'
-                  ? 'Active: Buyer Dossier (Perspective preview active)'
-                  : 'Active: OEM Supplier Dossier (Preview perspective)'}
+                {isBuyer ? 'Sourcing & RFQ platform access' : 'Supplier listing & deal room access'}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Executive Identity Card */}
+        {/* Identity Card */}
         <div className="px-5 pt-1">
           <div className="bg-white rounded-xl p-5 shadow-sm relative overflow-hidden ring-1 ring-[#dcc0bf]/30">
             <div className="flex items-center gap-4">
-              <div className="relative shrink-0">
-                <div className="w-20 h-20 rounded-full overflow-hidden bg-[#f5f3f0] shadow-sm ring-2 ring-[#4c000c]/15">
-                  <img
-                    className="w-full h-full object-cover"
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuA-cRg-WExfp8LQpb0_qDNnoNvhSxj1XvMwTnRor9GS0ENtaO8jKNCqXhpmQ069xu4yJ0_Y5XW4PndKSDERoVuZen2Kj7H2od-LMzXnkw4qU8iDBQaQNz0w9YNb8zg6JzIPjSATYa7WsAOBx6Gr4Fqbzry25C8ZlZeOyt3rleHWebydYe5-gKVQbzkpmisnhzb_fY3WGfmQFZHeSsZf9_gdB5Y5bHIBKgZHpjNMI_FA6LLi9DsFtdw1OQ"
-                    alt="Elena Rostova portrait"
-                  />
+              <div
+                onClick={() => setIsAvatarPickerOpen(true)}
+                title="Click to change profile picture"
+                className="relative shrink-0 cursor-pointer group"
+              >
+                <div className="w-20 h-20 rounded-full overflow-hidden bg-[#eae8e5] shadow-sm ring-2 ring-[#4c000c]/15 flex items-center justify-center transition-transform group-hover:scale-105">
+                  {currentUser?.avatar ? (
+                    <img className="w-full h-full object-cover" src={currentUser.avatar} alt="Profile" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-[#eae8e5]">
+                      <span className="material-symbols-outlined text-[46px] text-[#564241]/80">account_circle</span>
+                    </div>
+                  )}
                 </div>
-                <div className="absolute -bottom-0.5 -right-0.5 bg-[#3b6662] text-white rounded-full p-1 shadow-sm flex items-center justify-center ring-2 ring-white">
-                  <span
-                    className="material-symbols-outlined text-[15px]"
-                    style={{ fontVariationSettings: "'FILL' 1" }}
-                  >
-                    verified
-                  </span>
+                <div className="absolute -bottom-0.5 -right-0.5 bg-[#4c000c] text-white rounded-full p-1.5 shadow-sm flex items-center justify-center ring-2 ring-white hover:scale-110 transition-transform">
+                  <span className="material-symbols-outlined text-[13px]">photo_camera</span>
                 </div>
               </div>
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <h2 className="font-serif text-[1.4rem] text-[#1b1c1a] tracking-tight truncate font-medium">
-                    Elena Rostova
+                    {currentUser?.name || 'Executive Partner'}
                   </h2>
                   <button
-                    aria-label="Edit Profile"
-                    onClick={() => showToast('Edit profile dossier modal simulated')}
+                    aria-label="Change Profile Picture"
+                    onClick={() => setIsAvatarPickerOpen(true)}
                     className="p-1 text-[#564241] hover:text-[#4c000c] transition-colors rounded-lg cursor-pointer"
                     type="button"
                   >
                     <span className="material-symbols-outlined text-[20px]">edit_note</span>
                   </button>
                 </div>
-                <p className="text-[13px] text-[#4c000c] font-medium mt-0.5">
-                  VP of Global Hardware Sourcing
+                <p className="text-[13px] font-medium mt-0.5" style={{ color: accentColor }}>
+                  {isBuyer ? 'Procurement Buyer' : 'Manufacturing Supplier'}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-[#564241] mt-3 pt-3 border-t border-[#eae8e5] flex-wrap">
-              <div className="flex items-center gap-1 min-w-0">
-                <span className="material-symbols-outlined text-[16px] shrink-0 text-[#3b6662]">
-                  domain
-                </span>
-                <span className="text-[12.5px] text-[#1b1c1a] font-medium">
-                  AeroDrive Systems GmbH
+            <div className="flex flex-col gap-1.5 mt-3 pt-3 border-t border-[#eae8e5]">
+              <div className="flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px] text-[#3b6662]">domain</span>
+                <span className="text-[12.5px] text-[#1b1c1a] font-medium truncate">
+                  {currentUser?.companyName || '—'}
                 </span>
               </div>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#bbe8e4] text-[#406a66] text-[11px] font-semibold shrink-0">
+              {currentUser?.email && (
+                <div className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[14px] text-[#564241]">mail</span>
+                  <span className="text-[11.5px] text-[#564241] truncate">{currentUser.email}</span>
+                </div>
+              )}
+              <div>
                 <span
-                  className="material-symbols-outlined text-[13px]"
-                  style={{ fontVariationSettings: "'FILL' 1" }}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
+                  style={{ backgroundColor: isBuyer ? '#ffdad9' : '#bbe8e4', color: isBuyer ? '#4c000c' : '#406a66' }}
                 >
-                  verified
+                  <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                    verified
+                  </span>
+                  {isBuyer ? 'Verified Buyer' : 'Verified OEM'}
                 </span>
-                <span className="leading-none">Tier-1</span>
-              </span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Operational Metrics Mosaic */}
+        {/* Activity Metrics — all start at 0, no fake numbers */}
         <div className="px-5 pt-3">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-[1.05rem] text-[#1b1c1a] tracking-tight font-semibold">
-              {rolePerspective === 'buyer'
-                ? 'Executive Pipeline Overview'
-                : 'Manufacturing Production Metrics'}
+              {isBuyer ? 'Procurement Activity' : 'Supplier Activity'}
             </h3>
-            <span className="text-[10px] text-[#564241] uppercase tracking-wider font-semibold">
-              Q3 Industrial Index
-            </span>
+            <span className="text-[10px] text-[#564241] uppercase tracking-wider font-semibold">Current Session</span>
           </div>
 
-          {/* Buyer Metrics */}
-          {rolePerspective === 'buyer' ? (
-            <div className="grid grid-cols-3 gap-2.5 transition-opacity duration-300">
-              <div className="bg-white p-3 rounded-xl shadow-sm text-center flex flex-col justify-between h-full border border-[#dcc0bf]/30">
+          {isBuyer ? (
+            <div className="grid grid-cols-3 gap-2.5">
+              <div
+                onClick={() => onOpenActiveRfqs?.()}
+                className="bg-white p-3 rounded-xl shadow-sm text-center flex flex-col justify-between h-full border border-[#dcc0bf]/30 hover:border-[#6c151e] cursor-pointer transition-colors"
+              >
                 <div className="h-7 flex items-center justify-center">
-                  <span className="text-[10px] text-[#564241] uppercase tracking-wider block font-bold">
-                    Active RFQs
-                  </span>
+                  <span className="text-[10px] text-[#564241] uppercase tracking-wider block font-bold">Active RFQs</span>
                 </div>
-                <p className="font-serif text-[1.6rem] text-[#1b1c1a] tracking-tight my-1 font-semibold">
-                  3
-                </p>
-                <span className="text-[11px] text-[#3b6662] font-semibold block">Live</span>
+                <p className="font-serif text-[1.6rem] text-[#1b1c1a] tracking-tight my-1 font-semibold">0</p>
+                <span className="text-[11px] text-[#3b6662] font-semibold block">This session</span>
               </div>
-
-              <div className="bg-white p-3 rounded-xl shadow-sm text-center flex flex-col justify-between h-full border border-[#dcc0bf]/30">
+              <div
+                onClick={() => onOpenMatchHistory?.()}
+                className="bg-white p-3 rounded-xl shadow-sm text-center flex flex-col justify-between h-full border border-[#dcc0bf]/30 hover:border-[#3b6662] cursor-pointer transition-colors"
+              >
                 <div className="h-7 flex items-center justify-center">
-                  <span className="text-[10px] text-[#564241] uppercase tracking-wider block font-bold">
-                    Matches
-                  </span>
+                  <span className="text-[10px] text-[#564241] uppercase tracking-wider block font-bold">Matches</span>
                 </div>
-                <p className="font-serif text-[1.6rem] text-[#1b1c1a] tracking-tight my-1 font-semibold">
-                  28
-                </p>
+                <p className="font-serif text-[1.6rem] text-[#1b1c1a] tracking-tight my-1 font-semibold">0</p>
                 <span className="text-[11px] text-[#564241] font-normal block">Partners</span>
               </div>
-
               <div className="bg-white p-3 rounded-xl shadow-sm text-center flex flex-col justify-between h-full border border-[#dcc0bf]/30">
                 <div className="h-7 flex items-center justify-center">
                   <span className="text-[10px] text-[#564241] uppercase tracking-wider block leading-none font-bold">
-                    Loyalty Score
+                    Deal Rooms
                   </span>
                 </div>
-                <p className="font-serif text-[1.6rem] text-[#6c151e] tracking-tight my-1 font-semibold">
-                  98%
-                </p>
-                <span className="text-[11px] text-[#3b6662] font-semibold block">Top 2% Index</span>
+                <p className="font-serif text-[1.6rem] text-[#6c151e] tracking-tight my-1 font-semibold">0</p>
+                <span className="text-[11px] text-[#3b6662] font-semibold block">Active</span>
               </div>
             </div>
           ) : (
-            /* OEM Metrics */
-            <div className="grid grid-cols-3 gap-2.5 transition-opacity duration-300">
-              <div className="bg-white p-3 rounded-xl shadow-sm text-center flex flex-col justify-between h-full min-w-0 overflow-hidden border border-[#dcc0bf]/30">
+            <div className="grid grid-cols-3 gap-2.5">
+              <div className="bg-white p-3 rounded-xl shadow-sm text-center flex flex-col justify-between h-full border border-[#dcc0bf]/30">
                 <div className="h-7 flex items-center justify-center">
-                  <span className="text-[10px] text-[#564241] uppercase tracking-wider block font-bold">
-                    Capacity
-                  </span>
+                  <span className="text-[10px] text-[#564241] uppercase tracking-wider block font-bold">Inquiries</span>
                 </div>
-                <p className="font-serif text-[1.6rem] text-[#3b6662] tracking-tight my-1 truncate font-semibold">
-                  85%
-                </p>
-                <span className="text-[11px] text-[#564241] font-normal block truncate">
-                  Allocated
-                </span>
+                <p className="font-serif text-[1.6rem] text-[#3b6662] tracking-tight my-1 font-semibold">0</p>
+                <span className="text-[11px] text-[#564241] font-normal block">Received</span>
               </div>
-
-              <div className="bg-white p-3 rounded-xl shadow-sm text-center flex flex-col justify-between h-full min-w-0 overflow-hidden border border-[#dcc0bf]/30">
+              <div
+                onClick={() => onOpenMatchHistory?.()}
+                className="bg-white p-3 rounded-xl shadow-sm text-center flex flex-col justify-between h-full border border-[#dcc0bf]/30 hover:border-[#3b6662] cursor-pointer transition-colors"
+              >
                 <div className="h-7 flex items-center justify-center">
-                  <span className="text-[10px] text-[#564241] uppercase tracking-wider block font-bold">
-                    Spindles
-                  </span>
+                  <span className="text-[10px] text-[#564241] uppercase tracking-wider block font-bold">Matches</span>
                 </div>
-                <p className="font-serif text-[1.6rem] text-[#1b1c1a] tracking-tight my-1 truncate font-semibold">
-                  24
-                </p>
-                <span className="text-[11px] text-[#564241] font-normal block truncate">
-                  5-Axis CNC
-                </span>
+                <p className="font-serif text-[1.6rem] text-[#1b1c1a] tracking-tight my-1 font-semibold">0</p>
+                <span className="text-[11px] text-[#564241] font-normal block">Partners</span>
               </div>
-
-              <div className="bg-white p-3 rounded-xl shadow-sm text-center flex flex-col justify-between h-full min-w-0 overflow-hidden border border-[#dcc0bf]/30">
+              <div
+                onClick={() => onOpenActiveRfqs?.()}
+                className="bg-white p-3 rounded-xl shadow-sm text-center flex flex-col justify-between h-full border border-[#dcc0bf]/30 hover:border-[#3b6662] cursor-pointer transition-colors"
+              >
                 <div className="h-7 flex items-center justify-center">
-                  <span className="text-[10px] text-[#564241] uppercase tracking-wider block text-center leading-none font-bold">
-                    Turnaround
-                  </span>
+                  <span className="text-[10px] text-[#564241] uppercase tracking-wider block font-bold">RFQs</span>
                 </div>
-                <p className="font-serif text-[1.6rem] text-[#6c151e] tracking-tight my-1 truncate font-semibold">
-                  12d
-                </p>
-                <span className="text-[11px] text-[#3b6662] font-semibold block truncate">
-                  Expedited
-                </span>
+                <p className="font-serif text-[1.6rem] text-[#6c151e] tracking-tight my-1 font-semibold">0</p>
+                <span className="text-[11px] text-[#3b6662] font-semibold block">Active</span>
               </div>
             </div>
           )}
         </div>
 
-        {/* Role Dynamic Dossier Content */}
+        {/* Role-specific Dossier Panel */}
         <div className="px-5 pt-3">
-          {rolePerspective === 'buyer' ? (
-            /* Buyer View Dossier */
+          {isBuyer ? (
             <div className="bg-white rounded-xl p-4 shadow-sm space-y-3.5 border border-[#dcc0bf]/30">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[#6c151e] text-[20px]">
-                    dataset
-                  </span>
-                  <h3 className="text-[1.1rem] font-semibold text-[#1b1c1a]">
-                    Procurement Mandate
-                  </h3>
+                  <span className="material-symbols-outlined text-[#6c151e] text-[20px]">dataset</span>
+                  <h3 className="text-[1.1rem] font-semibold text-[#1b1c1a]">Buyer Profile</h3>
                 </div>
                 <span className="text-[11px] text-[#4c000c] font-semibold bg-[#ffdad9]/40 px-2.5 py-0.5 rounded-full">
-                  Tier 1 Target
+                  Procurement
                 </span>
               </div>
-
-              <div>
-                <label className="text-[10px] font-bold text-[#564241] uppercase tracking-wider block mb-2">
-                  Key Technologies
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  <span className="px-2.5 py-1 rounded-lg bg-[#efeeeb] text-[12px] font-semibold text-[#1b1c1a]">
-                    5-Axis CNC Milling
-                  </span>
-                  <span className="px-2.5 py-1 rounded-lg bg-[#efeeeb] text-[12px] font-semibold text-[#1b1c1a]">
-                    High-Pressure Die Casting
-                  </span>
-                  <span className="px-2.5 py-1 rounded-lg bg-[#efeeeb] text-[12px] font-semibold text-[#1b1c1a]">
-                    Rapid DMLS Metal 3D
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              <div className="grid grid-cols-2 gap-2">
                 <div className="bg-[#f5f3f0] p-2.5 rounded-lg border border-[#dcc0bf]/20">
-                  <p className="text-[10px] font-bold text-[#564241] uppercase tracking-wider">
-                    Allocation
-                  </p>
-                  <p className="text-[13.5px] text-[#4c000c] font-semibold mt-0.5">
-                    €5M – €15M / yr
+                  <p className="text-[10px] font-bold text-[#564241] uppercase tracking-wider">Company</p>
+                  <p className="text-[12.5px] text-[#1b1c1a] font-semibold mt-0.5 truncate">
+                    {currentUser?.companyName || '—'}
                   </p>
                 </div>
                 <div className="bg-[#f5f3f0] p-2.5 rounded-lg border border-[#dcc0bf]/20">
-                  <p className="text-[10px] font-bold text-[#564241] uppercase tracking-wider">
-                    MOQ Appetite
-                  </p>
-                  <p className="text-[13.5px] text-[#1b1c1a] font-semibold mt-0.5">
-                    100 – 25,000 pcs
+                  <p className="text-[10px] font-bold text-[#564241] uppercase tracking-wider">Contact</p>
+                  <p className="text-[12.5px] text-[#1b1c1a] font-semibold mt-0.5 truncate">
+                    {currentUser?.name || '—'}
                   </p>
                 </div>
               </div>
-
-              <div className="pt-2 flex items-center justify-between text-[#564241] text-[11px] border-t border-[#eae8e5]">
+              <div className="pt-2 flex items-center justify-between text-[11px] border-t border-[#eae8e5]">
                 <div className="flex items-center gap-1.5 text-[#3b6662] font-medium">
                   <span className="material-symbols-outlined text-[16px]">verified_user</span>
-                  <span>ISO 9001 • ISO 13485 • RoHS</span>
+                  <span>Encrypted Bilateral NDA</span>
                 </div>
-                <span className="text-[#4c000c] font-semibold uppercase text-[11px]">
-                  Encrypted Bilateral NDA
-                </span>
+                <span className="text-[#4c000c] font-semibold uppercase">Secured</span>
               </div>
             </div>
           ) : (
-            /* OEM Manufacturer View Dossier */
             <div className="bg-white rounded-xl p-4 shadow-sm border border-[#dcc0bf]/30">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[#3b6662] text-[20px]">
-                    factory
-                  </span>
-                  <h3 className="text-[1.1rem] font-semibold text-[#1b1c1a]">
-                    Production Facility Dossier
-                  </h3>
+                  <span className="material-symbols-outlined text-[#3b6662] text-[20px]">factory</span>
+                  <h3 className="text-[1.1rem] font-semibold text-[#1b1c1a]">Manufacturer Profile</h3>
                 </div>
                 <span className="text-[11px] text-[#3b6662] font-semibold bg-[#bbe8e4] px-2.5 py-0.5 rounded-full">
                   OEM Verified
                 </span>
               </div>
-
-              {/* Facility Preview Thumbnail */}
-              <div className="w-full h-32 rounded-lg overflow-hidden relative mb-3 bg-[#efeeeb]">
-                <img
-                  className="w-full h-full object-cover"
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuDwDpBScwxPqV4scRl-ogr1H5nIBHZ4qDu3DQ4wUUPWYIX1TlIcYebTBSiqDmtla7rK7uXFrChU6bV7YCrC-6ZQ4cnQByTUBjk2MdKtDJ7yseoLEBpmbgUb-_KWuzrJJlCxZWaEbagifu7uApBXDW3qjI5mRwY39Y9uXksXJm-WECJzJGGpDU73-s5wnhJkeKjzHX4vm_7dKEougLvGtTs_eMR5KPWyQINcz1OERteP8WZylvGUhQONyg"
-                  alt="High-tech European precision machining manufacturing hall"
-                />
-                <div className="absolute bottom-2 left-2 bg-[#30312f]/85 backdrop-blur-sm text-white px-2 py-0.5 rounded text-[10px] font-medium">
-                  Facility Hub: Bavaria Advanced Plant 02 (4,800 m²)
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-[#f5f3f0] p-2.5 rounded-lg border border-[#dcc0bf]/20">
+                  <p className="text-[10px] font-bold text-[#564241] uppercase tracking-wider">Company</p>
+                  <p className="text-[12.5px] text-[#1b1c1a] font-semibold mt-0.5 truncate">
+                    {currentUser?.companyName || '—'}
+                  </p>
+                </div>
+                <div className="bg-[#f5f3f0] p-2.5 rounded-lg border border-[#dcc0bf]/20">
+                  <p className="text-[10px] font-bold text-[#564241] uppercase tracking-wider">Contact</p>
+                  <p className="text-[12.5px] text-[#1b1c1a] font-semibold mt-0.5 truncate">
+                    {currentUser?.name || '—'}
+                  </p>
                 </div>
               </div>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="text-[10px] font-bold text-[#564241] uppercase tracking-wider block mb-1.5">
-                    Machine Cell Capabilities
-                  </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    <span className="px-2.5 py-1 rounded-full bg-[#efeeeb] text-[12px] text-[#1b1c1a] font-medium">
-                      5-Axis Hermle C42U MT
-                    </span>
-                    <span className="px-2.5 py-1 rounded-full bg-[#efeeeb] text-[12px] text-[#1b1c1a] font-medium">
-                      Wire EDM (±0.002mm)
-                    </span>
-                    <span className="px-2.5 py-1 rounded-full bg-[#efeeeb] text-[12px] text-[#1b1c1a] font-medium">
-                      Zeiss CMM Laser Scanning
-                    </span>
-                    <span className="px-2.5 py-1 rounded-full bg-[#efeeeb] text-[12px] text-[#1b1c1a] font-medium">
-                      Class 7 Cleanroom Assy
-                    </span>
-                  </div>
+              <div className="pt-3 flex items-center justify-between text-[11px] border-t border-[#eae8e5] mt-3">
+                <div className="flex items-center gap-1.5 text-[#3b6662] font-medium">
+                  <span className="material-symbols-outlined text-[16px]">verified_user</span>
+                  <span>Encrypted Bilateral NDA</span>
                 </div>
-
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <div className="bg-[#f5f3f0] p-2.5 rounded-lg border border-[#dcc0bf]/20">
-                    <p className="text-[10px] font-bold text-[#564241] uppercase tracking-wider">
-                      Minimum Order Qty
-                    </p>
-                    <p className="text-[13px] text-[#3b6662] font-semibold mt-0.5">
-                      50 pcs (Prototypes: 1 pc)
-                    </p>
-                  </div>
-                  <div className="bg-[#f5f3f0] p-2.5 rounded-lg border border-[#dcc0bf]/20">
-                    <p className="text-[10px] font-bold text-[#564241] uppercase tracking-wider">
-                      Fast-Track Turnaround
-                    </p>
-                    <p className="text-[13px] text-[#1b1c1a] font-semibold mt-0.5">
-                      10 – 18 Working Days
-                    </p>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-[#564241] uppercase tracking-wider block mb-1.5">
-                    Audited Manufacturing Standards
-                  </label>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#f9dec3] text-[#261908] text-[11px] font-semibold">
-                      <span className="material-symbols-outlined text-[12px]">verified</span>{' '}
-                      AS9100D Aerospace
-                    </span>
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#bbe8e4] text-[#406a66] text-[11px] font-semibold">
-                      <span
-                        className="material-symbols-outlined text-[13px]"
-                        style={{ fontVariationSettings: "'FILL' 1" }}
-                      >
-                        verified
-                      </span>
-                      <span>Tier-1</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#efeeeb] text-[11px] font-semibold text-[#1b1c1a]">
-                      <span className="material-symbols-outlined text-[12px]">military_tech</span>{' '}
-                      ITAR Compliant
-                    </span>
-                  </div>
-                </div>
+                <span className="text-[#3b6662] font-semibold uppercase">Active</span>
               </div>
             </div>
           )}
         </div>
 
-        {/* Executive Settings & Operations Menu */}
+        {/* Governance Menu */}
         <div className="px-5 pt-3">
           <h3 className="text-[1.05rem] text-[#1b1c1a] font-semibold tracking-tight mb-2">
-            Dealmaking &amp; Governance
+            Dealmaking & Governance
           </h3>
           <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-[#dcc0bf]/30 divide-y divide-[#efeeeb]">
-            <button
-              onClick={() => showToast('Matching preferences opened')}
-              className="w-full px-4 py-3.5 flex items-center justify-between text-left hover:bg-[#f5f3f0] transition-colors cursor-pointer"
-              type="button"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#eae8e5] flex items-center justify-center text-[#4c000c]">
-                  <span className="material-symbols-outlined text-[19px]">tune</span>
+            {[
+              { icon: 'tune', label: 'Matching Preferences', color: '#4c000c', action: () => showToast('Matching preferences opened') },
+              { icon: 'smart_toy', label: 'Deal Rooms & RFQ Automation', color: '#3b6662', action: () => showToast('RFQ automation opened') },
+              {
+                icon: 'folder_managed', label: 'Verification & Documents', color: '#2d1f0e',
+                action: () => onOpenVerificationDossiers ? onOpenVerificationDossiers() : showToast('Verification dossiers opened'),
+              },
+              { icon: 'enhanced_encryption', label: 'Security & Escrow', color: '#1b1c1a', action: () => showToast('Security & Escrow vault verified') },
+            ].map(({ icon, label, color, action }) => (
+              <button
+                key={label}
+                onClick={action}
+                className="w-full px-4 py-3.5 flex items-center justify-between text-left hover:bg-[#f5f3f0] transition-colors cursor-pointer"
+                type="button"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#eae8e5] flex items-center justify-center" style={{ color }}>
+                    <span className="material-symbols-outlined text-[19px]">{icon}</span>
+                  </div>
+                  <p className="text-[13px] font-medium text-[#1b1c1a]">{label}</p>
                 </div>
-                <p className="text-[13px] font-medium text-[#1b1c1a]">Matching Preferences</p>
-              </div>
-              <span className="material-symbols-outlined text-[#564241] text-[20px]">
-                chevron_right
-              </span>
-            </button>
-
-            <button
-              onClick={() => showToast('Deal rooms & RFQ automation opened')}
-              className="w-full px-4 py-3.5 flex items-center justify-between text-left hover:bg-[#f5f3f0] transition-colors cursor-pointer"
-              type="button"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#eae8e5] flex items-center justify-center text-[#3b6662]">
-                  <span className="material-symbols-outlined text-[19px]">smart_toy</span>
-                </div>
-                <p className="text-[13px] font-medium text-[#1b1c1a]">
-                  Deal Rooms &amp; RFQ Automation
-                </p>
-              </div>
-              <span className="material-symbols-outlined text-[#564241] text-[20px]">
-                chevron_right
-              </span>
-            </button>
-
-            <button
-              onClick={() => showToast('Verification dossiers & documents opened')}
-              className="w-full px-4 py-3.5 flex items-center justify-between text-left hover:bg-[#f5f3f0] transition-colors cursor-pointer"
-              type="button"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#eae8e5] flex items-center justify-center text-[#2d1f0e]">
-                  <span className="material-symbols-outlined text-[19px]">folder_managed</span>
-                </div>
-                <p className="text-[13px] font-medium text-[#1b1c1a]">
-                  Verification &amp; Documents
-                </p>
-              </div>
-              <span className="material-symbols-outlined text-[#564241] text-[20px]">
-                chevron_right
-              </span>
-            </button>
-
-            <button
-              onClick={() => showToast('Security & Escrow vault verified')}
-              className="w-full px-4 py-3.5 flex items-center justify-between text-left hover:bg-[#f5f3f0] transition-colors cursor-pointer"
-              type="button"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#eae8e5] flex items-center justify-center text-[#1b1c1a]">
-                  <span className="material-symbols-outlined text-[19px]">
-                    enhanced_encryption
-                  </span>
-                </div>
-                <p className="text-[13px] font-medium text-[#1b1c1a]">Security &amp; Escrow</p>
-              </div>
-              <span className="material-symbols-outlined text-[#564241] text-[20px]">
-                chevron_right
-              </span>
-            </button>
+                <span className="material-symbols-outlined text-[#564241] text-[20px]">chevron_right</span>
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Enterprise Consortia & Switch Org Actions */}
+        {/* Sign Out */}
         <div className="px-5 pt-4 flex flex-col gap-2">
           <button
-            className="w-full py-2.5 px-4 rounded-lg bg-[#eae8e5] text-[#1b1c1a] font-medium text-xs flex items-center justify-center gap-2 hover:bg-[#dbdad7] transition-colors cursor-pointer"
-            onClick={() => showToast('Switching entity: AeroDrive Systems GmbH (DE-HQ)...')}
-            type="button"
-          >
-            <span className="material-symbols-outlined text-[18px]">cached</span>
-            <span>Switch Entity (AeroDrive DE)</span>
-          </button>
-
-          <button
             className="w-full py-2 px-4 text-center text-xs font-semibold text-[#ba1a1a] hover:bg-[#ffdad6]/40 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-            onClick={() => showToast('Signed out of executive session')}
+            onClick={() => onSignOut ? onSignOut() : showToast('Signed out')}
             type="button"
           >
             <span className="material-symbols-outlined text-[16px]">logout</span>
             <span>Sign Out</span>
           </button>
-
           <p className="text-center text-[10.5px] text-[#564241]/80 pt-1">
-            Sourcingo Core v4.12 • Enterprise Pipeline
+            Sourcingo v1.0 • {currentUser?.role === 'manufacturer' ? 'OEM Supplier Portal' : 'Procurement Buyer Portal'}
           </p>
         </div>
 
-        {/* Notification Toast */}
-        {toastMessage && (
-          <div className="fixed bottom-6 inset-x-5 bg-[#30312f] text-[#f2f0ed] py-3 px-4 rounded-xl shadow-xl flex items-center justify-between z-50 transition-all">
-            <div className="flex items-center gap-2.5">
-              <span className="material-symbols-outlined text-[#beebe6] text-[20px]">
-                check_circle
-              </span>
-              <span className="text-xs text-[#f2f0ed]">{toastMessage}</span>
+        {/* Hidden File Input */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              const reader = new FileReader();
+              reader.onload = () => {
+                if (typeof reader.result === 'string') {
+                  onUpdateAvatar?.(reader.result);
+                  showToast('Custom profile picture updated');
+                  setIsAvatarPickerOpen(false);
+                }
+              };
+              reader.readAsDataURL(file);
+            }
+          }}
+        />
+
+        {/* PFP Selector Dialog */}
+        {isAvatarPickerOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3">
+            <div className="w-full max-w-sm bg-white rounded-3xl border border-[#4c000c]/20 shadow-2xl flex flex-col overflow-hidden">
+              <div className="p-4 bg-[#f5f3f0] border-b border-[#dcc0bf]/40 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-[#6c151e] text-white flex items-center justify-center">
+                    <span className="material-symbols-outlined text-[18px]">photo_camera</span>
+                  </div>
+                  <div>
+                    <h3 className="font-serif text-[16px] text-[#4c000c] font-medium leading-none">Select Profile Picture</h3>
+                    <p className="text-[11px] text-[#564241] mt-0.5">Choose an avatar or upload your own</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsAvatarPickerOpen(false)}
+                  className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[#564241] hover:text-[#4c000c] cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[18px]">close</span>
+                </button>
+              </div>
+
+              <div className="p-4 flex flex-col gap-3.5 bg-[#fbf9f6]">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full py-2.5 px-4 rounded-xl border border-dashed border-[#6c151e]/40 hover:bg-[#ffdad9]/30 text-[#4c000c] text-[12px] font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[18px]">upload</span>
+                  <span>Upload from Device</span>
+                </button>
+
+                <div>
+                  <label className="text-[10px] font-bold text-[#564241] uppercase tracking-wider block mb-2">Default Avatars</label>
+                  <div className="grid grid-cols-4 gap-2.5">
+                    <button
+                      onClick={() => { onUpdateAvatar?.(''); showToast('Reset to default'); setIsAvatarPickerOpen(false); }}
+                      className={`h-16 rounded-2xl flex flex-col items-center justify-center border transition-all cursor-pointer ${
+                        !currentUser?.avatar ? 'border-[#6c151e] bg-[#ffdad9]/40 ring-2 ring-[#6c151e]/30' : 'border-[#dcc0bf]/50 bg-white hover:bg-[#efeeeb]'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[26px] text-[#564241]">account_circle</span>
+                      <span className="text-[9.5px] font-bold text-[#564241] mt-0.5">Default</span>
+                    </button>
+
+                    {[
+                      { label: 'Executive', url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=240&q=80' },
+                      { label: 'Engineer', url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=240&q=80' },
+                      { label: 'Plant Lead', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=240&q=80' },
+                      { label: 'Procurement', url: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=240&q=80' },
+                      { label: 'Director', url: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=240&q=80' },
+                      { label: 'Technical', url: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=240&q=80' },
+                      { label: 'OEM VP', url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=240&q=80' },
+                    ].map((av, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => { onUpdateAvatar?.(av.url); showToast(`Selected ${av.label} avatar`); setIsAvatarPickerOpen(false); }}
+                        className={`h-16 rounded-2xl overflow-hidden border p-0.5 transition-all cursor-pointer ${
+                          currentUser?.avatar === av.url ? 'border-[#6c151e] ring-2 ring-[#6c151e]/30 scale-105' : 'border-[#dcc0bf]/50 hover:scale-105'
+                        }`}
+                      >
+                        <img src={av.url} alt={av.label} className="w-full h-full object-cover rounded-xl" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
-            <button
-              className="text-[#f2f0ed]/60 hover:text-white cursor-pointer"
-              onClick={() => setToastMessage(null)}
-              type="button"
-            >
+          </div>
+        )}
+
+        {/* Toast */}
+        {toastMessage && (
+          <div className="fixed bottom-6 inset-x-5 bg-[#30312f] text-[#f2f0ed] py-3 px-4 rounded-xl shadow-xl flex items-center justify-between z-50">
+            <div className="flex items-center gap-2.5">
+              <span className="material-symbols-outlined text-[#beebe6] text-[20px]">check_circle</span>
+              <span className="text-xs">{toastMessage}</span>
+            </div>
+            <button className="text-[#f2f0ed]/60 hover:text-white cursor-pointer" onClick={() => setToastMessage(null)} type="button">
               <span className="material-symbols-outlined text-[18px]">close</span>
             </button>
           </div>

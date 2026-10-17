@@ -1,21 +1,36 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { DealRoomItem, MatchAvatar } from '../types';
 
 interface DealRoomsProps {
   dealRooms: DealRoomItem[];
   newMatches: MatchAvatar[];
   onOpenMatchmaker: () => void;
+  initialRoomId?: string | null;
+  onRoomOpened?: () => void;
 }
 
 export const DealRooms: React.FC<DealRoomsProps> = ({
   dealRooms,
   newMatches,
   onOpenMatchmaker: _onOpenMatchmaker,
+  initialRoomId,
+  onRoomOpened,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'rfq' | 'oem' | 'archived'>('all');
   const [selectedDeal, setSelectedDeal] = useState<DealRoomItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Auto-open a specific room when navigating from a match
+  useEffect(() => {
+    if (initialRoomId) {
+      const room = dealRooms.find((d) => d.id === initialRoomId);
+      if (room) {
+        setSelectedDeal(room);
+        onRoomOpened?.();
+      }
+    }
+  }, [initialRoomId, dealRooms, onRoomOpened]);
 
   const [chatMessages, setChatMessages] = useState<Array<{ sender: string; text: string; time: string }>>([
     {

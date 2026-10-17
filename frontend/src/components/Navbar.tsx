@@ -5,31 +5,20 @@ interface NavbarProps {
   onSelectTab: (tab: 'matchmaker' | 'dealrooms' | 'profile') => void;
   onOpenDrawer: () => void;
   savedCount: number;
+  currentUser?: { name: string; companyName: string; role: string; avatar?: string } | null;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   currentTab,
   onSelectTab,
   onOpenDrawer,
+  currentUser,
 }) => {
-  // Mobile status bar component (9:41, icons)
-  const renderStatusBar = () => (
-    <div className="flex justify-between items-center px-6 pt-safe pt-2.5 pb-1 text-[#1b1c1a] text-[14px] font-semibold tracking-tight select-none">
-      <span className="tracking-tight font-medium">9:41</span>
-      <div className="flex items-center gap-1.5 text-[#1b1c1a]">
-        <span className="material-symbols-outlined text-[17px]">signal_cellular_4_bar</span>
-        <span className="material-symbols-outlined text-[17px]">wifi</span>
-        <span className="material-symbols-outlined text-[19px]">battery_charging_full</span>
-      </div>
-    </div>
-  );
-
   if (currentTab === 'dealrooms') {
     return (
-      <header className="bg-[#fbf9f6]/90 backdrop-blur-xl border-b border-[#dcc0bf]/30 select-none flex-shrink-0">
+      <header className="bg-[#fbf9f6]/90 backdrop-blur-xl border-b border-[#dcc0bf]/30 select-none flex-shrink-0 pt-safe">
         <div className="w-full max-w-md mx-auto">
-          {renderStatusBar()}
-          <div className="h-12 px-4 flex items-center justify-between">
+          <div className="h-14 px-4 flex items-center justify-between">
             <div className="flex items-center gap-1">
               <button
                 aria-label="Back to Discover and Matchmaker"
@@ -74,10 +63,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   if (currentTab === 'profile') {
     return (
-      <header className="bg-[#fbf9f6]/90 backdrop-blur-xl border-b border-[#dcc0bf]/30 select-none flex-shrink-0">
+      <header className="bg-[#fbf9f6]/90 backdrop-blur-xl border-b border-[#dcc0bf]/30 select-none flex-shrink-0 pt-safe">
         <div className="w-full max-w-md mx-auto">
-          {renderStatusBar()}
-          <div className="h-12 px-4 flex items-center justify-between">
+          <div className="h-14 px-4 flex items-center justify-between">
             <div className="flex items-center gap-1">
               <button
                 aria-label="Go back to Matchmaker"
@@ -112,10 +100,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   // Default Matchmaker screen header (Exact Stitch Screen 1)
   return (
-    <header className="bg-[#fbf9f6]/90 backdrop-blur-xl border-b border-[#dcc0bf]/30 select-none flex-shrink-0">
+    <header className="bg-[#fbf9f6]/90 backdrop-blur-xl border-b border-[#dcc0bf]/30 select-none flex-shrink-0 pt-safe">
       <div className="w-full max-w-md mx-auto">
-        {renderStatusBar()}
-        <div className="h-12 px-4 flex items-center justify-between">
+        <div className="h-16 px-4 flex items-center justify-between">
           {/* Left Buttons: Drawer (Menu) and Messages */}
           <div className="flex items-center gap-2">
             <button
@@ -152,19 +139,19 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             aria-label="Profile"
             onClick={() => onSelectTab('profile')}
-            className="relative w-11 h-11 rounded-full bg-white border border-[#3b6662]/20 shadow-sm flex items-center justify-center text-[#3b6662] hover:bg-[#3b6662]/10 active:scale-95 transition-all cursor-pointer"
+            className="relative w-11 h-11 rounded-full bg-white border border-[#3b6662]/20 shadow-sm flex items-center justify-center text-[#3b6662] hover:bg-[#3b6662]/10 active:scale-95 transition-all cursor-pointer overflow-hidden p-0.5"
           >
-            <svg
-              className="w-5 h-5 stroke-[#3b6662]"
-              fill="none"
-              strokeWidth="1.75"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              viewBox="0 0 24 24"
-            >
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-              <circle cx="12" cy="7" r="4"></circle>
-            </svg>
+            {currentUser?.avatar ? (
+              <img
+                src={currentUser.avatar}
+                alt="Profile"
+                className="w-full h-full object-cover rounded-full"
+              />
+            ) : (
+              <span className="material-symbols-outlined text-[24px] text-[#564241]">
+                account_circle
+              </span>
+            )}
             <span className="absolute bottom-1 right-1 w-2 h-2 bg-emerald-600 rounded-full border-2 border-white"></span>
           </button>
         </div>

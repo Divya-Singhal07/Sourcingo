@@ -4,9 +4,11 @@ import type { ProductCard } from '../types';
 
 interface SwipeDeckProps {
   products: ProductCard[];
-  onSwipe: (product: ProductCard, action: 'like' | 'pass') => void;
+  onSwipe: (product: ProductCard, action: 'like' | 'pass') => Promise<string | null>;
   onSaveBookmark: (product: ProductCard) => void;
   onOpenAiAssistant: (initialPrompt?: string) => void;
+  onSelectTab: (tab: 'matchmaker' | 'dealrooms' | 'profile') => void;
+  onEnterDealRoom: (roomId: string) => void;
 }
 
 const SECTORS = [
@@ -30,6 +32,8 @@ export const SwipeDeck: React.FC<SwipeDeckProps> = ({
   onSwipe,
   onSaveBookmark,
   onOpenAiAssistant,
+  onSelectTab,
+  onEnterDealRoom,
 }) => {
   const [selectedSector, setSelectedSector] = useState('All Sectors');
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -620,7 +624,16 @@ export const SwipeDeck: React.FC<SwipeDeckProps> = ({
 
             <div className="w-full flex flex-col gap-2">
               <button
-                onClick={() => setMatchModalProduct(null)}
+                onClick={async () => {
+                  if (!matchModalProduct) return;
+                  const roomId = await onSwipe(matchModalProduct, 'like');
+                  setMatchModalProduct(null);
+                  if (roomId) {
+                    onEnterDealRoom(roomId);
+                  } else {
+                    onSelectTab('dealrooms');
+                  }
+                }}
                 className="w-full py-2.5 rounded-full bg-[#6c151e] text-white font-semibold text-sm shadow-md hover:brightness-110 cursor-pointer"
               >
                 Enter Deal Room

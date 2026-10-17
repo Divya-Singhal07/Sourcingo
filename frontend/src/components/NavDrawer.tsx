@@ -11,6 +11,11 @@ interface NavDrawerProps {
   onChangeSearchRadius: (radius: '50 km' | '250 km' | '1000 km' | 'Global') => void;
   onOpenShortlist: () => void;
   onNavigateToDealrooms: () => void;
+  onOpenVerificationDossiers: () => void;
+  onOpenMatchHistory: () => void;
+  onOpenActiveRfqs: () => void;
+  onSignOut?: () => void;
+  currentUser?: { name: string; companyName: string; role: string; avatar?: string } | null;
 }
 
 export const NavDrawer: React.FC<NavDrawerProps> = ({
@@ -22,24 +27,71 @@ export const NavDrawer: React.FC<NavDrawerProps> = ({
   searchRadius,
   onChangeSearchRadius,
   onOpenShortlist,
-  onNavigateToDealrooms,
+  onNavigateToDealrooms: _onNavigateToDealrooms,
+  onOpenVerificationDossiers,
+  onOpenMatchHistory,
+  onOpenActiveRfqs,
+  onSignOut,
+  currentUser,
 }) => {
+  const initialValue =
+    selectedPriceTier === 'Budget'
+      ? 12000
+      : selectedPriceTier === 'Mid-Tier'
+      ? 35000
+      : 75000;
+
+  const [sliderValue, setSliderValue] = React.useState<number>(initialValue);
+
+  // Sync slider when selectedPriceTier prop changes externally from tier buttons
+  const isDraggingRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!isDraggingRef.current) {
+      if (selectedPriceTier === 'Budget') setSliderValue(12000);
+      else if (selectedPriceTier === 'Mid-Tier') setSliderValue(35000);
+      else if (selectedPriceTier === 'Enterprise') setSliderValue(75000);
+    }
+  }, [selectedPriceTier]);
+
+  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = Number(e.target.value);
+    setSliderValue(val);
+
+    // Automatically sync tier based on value threshold
+    if (val < 25000 && selectedPriceTier !== 'Budget') {
+      onChangePriceTier('Budget');
+    } else if (val >= 25000 && val < 55000 && selectedPriceTier !== 'Mid-Tier') {
+      onChangePriceTier('Mid-Tier');
+    } else if (val >= 55000 && selectedPriceTier !== 'Enterprise') {
+      onChangePriceTier('Enterprise');
+    }
+  };
+
+  const handleTierSelect = (tier: 'Budget' | 'Mid-Tier' | 'Enterprise') => {
+    isDraggingRef.current = false;
+    onChangePriceTier(tier);
+    if (tier === 'Budget') setSliderValue(12000);
+    if (tier === 'Mid-Tier') setSliderValue(35000);
+    if (tier === 'Enterprise') setSliderValue(75000);
+  };
+
   return (
     <>
       {/* Backdrop */}
       <div
         id="nav-drawer-backdrop"
         onClick={onClose}
-        className={`fixed inset-0 bg-black/50 backdrop-blur-sm z-50 transition-opacity duration-300 ${
+        className={`fixed inset-0 bg-black/50 backdrop-blur-xs z-50 transition-opacity duration-300 ease-out ${
           isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
       />
 
-      {/* Aside Drawer (Exact Stitch Screen 1 Drawer) */}
+      {/* Aside Drawer with Smooth Hardware-Accelerated Bezier Slide */}
       <aside
         id="nav-drawer"
         aria-label="Main navigation drawer"
-        className={`fixed top-0 left-0 bottom-0 w-[85%] max-w-[340px] bg-[#fbf9f6] z-50 shadow-2xl flex flex-col justify-between transition-transform duration-300 ease-in-out border-r border-[#dcc0bf]/40 overflow-hidden ${
+        className={`fixed top-0 left-0 bottom-0 w-[85%] max-w-[340px] bg-[#fbf9f6] z-50 shadow-2xl flex flex-col justify-between transition-transform duration-350 ease-[cubic-bezier(0.16,1,0.3,1)] border-r border-[#dcc0bf]/40 overflow-hidden will-change-transform ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -111,52 +163,62 @@ export const NavDrawer: React.FC<NavDrawerProps> = ({
                   </span>
                   <span>Price Range</span>
                 </div>
-                <span className="text-[12px] font-bold text-[#4c000c]">$1k – $50k+</span>
-              </div>
-
-              <div className="relative flex items-center py-1 mt-0.5">
-                <div className="w-full h-1.5 bg-[#e4e2df] rounded-full relative overflow-hidden">
-                  <div
-                    className="h-full bg-[#6c151e] rounded-full transition-all duration-300"
-                    style={{
-                      width:
-                        selectedPriceTier === 'Budget'
-                          ? '35%'
-                          : selectedPriceTier === 'Mid-Tier'
-                          ? '70%'
-                          : '100%',
-                    }}
-                  ></div>
-                </div>
-                <div
-                  className="absolute w-4 h-4 bg-[#6c151e] border-2 border-white rounded-full shadow top-1/2 -translate-y-1/2 transition-all duration-300"
-                  style={{
-                    left:
-                      selectedPriceTier === 'Budget'
-                        ? 'calc(35% - 8px)'
-                        : selectedPriceTier === 'Mid-Tier'
-                        ? 'calc(70% - 8px)'
-                        : 'calc(100% - 16px)',
-                  }}
-                ></div>
-              </div>
-
-              <div className="flex items-center justify-between text-[10.5px] text-[#564241] px-0.5">
-                <span className="font-medium">$1,000</span>
-                <span className="font-semibold text-[#4c000c]">
-                  Target:{' '}
-                  {selectedPriceTier === 'Budget'
-                    ? '$12,000'
-                    : selectedPriceTier === 'Mid-Tier'
-                    ? '$35,000'
-                    : '$75,000'}
+                <span className="text-[12.5px] font-bold text-[#4c000c] tracking-tight">
+                  ${sliderValue.toLocaleString()}
                 </span>
-                <span className="font-medium">$50k+</span>
+              </div>
+
+              {/* Clean Precision Range Slider */}
+              <div className="relative flex flex-col gap-1 py-1">
+                <div className="relative flex items-center w-full h-6">
+                  {/* Underlying Track */}
+                  <div className="absolute inset-x-0 h-1.5 bg-[#e4e2df] rounded-full pointer-events-none overflow-hidden">
+                    {/* Active Progress Fill */}
+                    <div
+                      className="h-full bg-[#6c151e] rounded-full transition-all duration-75"
+                      style={{
+                        width: `${((sliderValue - 1000) / (75000 - 1000)) * 100}%`,
+                      }}
+                    />
+                  </div>
+
+                  {/* Transparent Range Input Overlay with Custom Thumb */}
+                  <input
+                    type="range"
+                    min={1000}
+                    max={75000}
+                    step={500}
+                    value={sliderValue}
+                    onMouseDown={() => {
+                      isDraggingRef.current = true;
+                    }}
+                    onTouchStart={() => {
+                      isDraggingRef.current = true;
+                    }}
+                    onMouseUp={() => {
+                      isDraggingRef.current = false;
+                    }}
+                    onTouchEnd={() => {
+                      isDraggingRef.current = false;
+                    }}
+                    onChange={handleSliderChange}
+                    className="price-range-slider relative z-10"
+                    aria-label="Price range target slider"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-[10.5px] text-[#564241] px-0.5">
+                  <span className="font-medium">$1,000</span>
+                  <span className="font-semibold text-[#4c000c]">
+                    Target: ${sliderValue.toLocaleString()}
+                  </span>
+                  <span className="font-medium">$75,000+</span>
+                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-1.5 pt-1">
                 <button
-                  onClick={() => onChangePriceTier('Budget')}
+                  onClick={() => handleTierSelect('Budget')}
                   className={`py-1.5 rounded-lg text-[11px] font-medium text-center transition-colors cursor-pointer ${
                     selectedPriceTier === 'Budget'
                       ? 'bg-[#6c151e] text-white font-semibold shadow-sm'
@@ -166,7 +228,7 @@ export const NavDrawer: React.FC<NavDrawerProps> = ({
                   Budget
                 </button>
                 <button
-                  onClick={() => onChangePriceTier('Mid-Tier')}
+                  onClick={() => handleTierSelect('Mid-Tier')}
                   className={`py-1.5 rounded-lg text-[11px] text-center transition-colors cursor-pointer ${
                     selectedPriceTier === 'Mid-Tier'
                       ? 'bg-[#6c151e] text-white font-semibold shadow-sm'
@@ -176,7 +238,7 @@ export const NavDrawer: React.FC<NavDrawerProps> = ({
                   Mid-Tier
                 </button>
                 <button
-                  onClick={() => onChangePriceTier('Enterprise')}
+                  onClick={() => handleTierSelect('Enterprise')}
                   className={`py-1.5 rounded-lg text-[11px] font-medium text-center transition-colors cursor-pointer ${
                     selectedPriceTier === 'Enterprise'
                       ? 'bg-[#6c151e] text-white font-semibold shadow-sm'
@@ -225,8 +287,8 @@ export const NavDrawer: React.FC<NavDrawerProps> = ({
               <div className="flex flex-col gap-1 rounded-2xl bg-white border border-[#dcc0bf]/40 p-1.5 shadow-sm">
                 <button
                   onClick={() => {
-                    onNavigateToDealrooms();
                     onClose();
+                    onOpenVerificationDossiers();
                   }}
                   className="flex items-center justify-between px-3 py-2 rounded-xl text-[#1b1c1a] hover:bg-[#efeeeb] font-medium text-[13px] transition-colors text-left cursor-pointer"
                 >
@@ -243,8 +305,8 @@ export const NavDrawer: React.FC<NavDrawerProps> = ({
 
                 <button
                   onClick={() => {
-                    onNavigateToDealrooms();
                     onClose();
+                    onOpenMatchHistory();
                   }}
                   className="flex items-center justify-between px-3 py-2 rounded-xl text-[#1b1c1a] hover:bg-[#efeeeb] font-medium text-[13px] transition-colors text-left cursor-pointer"
                 >
@@ -261,8 +323,8 @@ export const NavDrawer: React.FC<NavDrawerProps> = ({
 
                 <button
                   onClick={() => {
-                    onNavigateToDealrooms();
                     onClose();
+                    onOpenActiveRfqs();
                   }}
                   className="flex items-center justify-between px-3 py-2 rounded-xl text-[#1b1c1a] hover:bg-[#efeeeb] font-medium text-[13px] transition-colors text-left cursor-pointer"
                 >
@@ -283,23 +345,37 @@ export const NavDrawer: React.FC<NavDrawerProps> = ({
           {/* Footer User Profile */}
           <div className="p-4 border-t border-[#dcc0bf]/30 bg-[#f5f3f0] flex flex-col gap-3 flex-shrink-0">
             <div className="flex items-center gap-3 px-1">
-              <div className="w-9 h-9 rounded-full bg-[#bbe8e4]/60 text-[#3b6662] flex items-center justify-center font-bold text-[12.5px] border border-[#a3cfca]/50 flex-shrink-0">
-                PE
+              <div className="w-9 h-9 rounded-full bg-[#eae8e5] text-[#564241] flex items-center justify-center border border-[#dcc0bf]/50 flex-shrink-0 overflow-hidden">
+                {currentUser?.avatar ? (
+                  <img
+                    src={currentUser.avatar}
+                    alt="User avatar"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="material-symbols-outlined text-[22px] text-[#564241]/80">
+                    account_circle
+                  </span>
+                )}
               </div>
               <div className="flex flex-col min-w-0 flex-1">
                 <span className="text-[13px] font-semibold text-[#1b1c1a] truncate leading-tight">
-                  Elena Rostova
+                  {currentUser ? currentUser.name : 'Elena Rostova'}
                 </span>
                 <span className="text-[11px] text-[#564241] truncate mt-0.5">
-                  BMW Group Procurement Tier
+                  {currentUser ? currentUser.companyName : 'BMW Group Procurement Tier'}
                 </span>
               </div>
             </div>
 
             <button
               onClick={() => {
-                alert('Signed out of session');
                 onClose();
+                if (onSignOut) {
+                  onSignOut();
+                } else {
+                  alert('Signed out of session');
+                }
               }}
               className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-[#4c000c] bg-[#ffdad9]/30 hover:bg-[#ffdad9]/50 text-[13px] font-semibold transition-colors w-full shadow-sm border border-[#4c000c]/10 cursor-pointer"
             >
