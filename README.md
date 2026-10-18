@@ -2,9 +2,9 @@
 
 **Discover manufacturers. Compare suppliers. Make smarter procurement decisions.**
 
-##Website: YOUR_WEBSITE_URL — Replace with your deployed website URL.
+Website: YOUR_WEBSITE_URL — Replace with your deployed website URL.
 
-##Project PPT: YOUR_PPT_URL — Replace with your PowerPoint, Google Slides, or PDF presentation link.
+Project PPT: YOUR_PPT_URL — Replace with your PowerPoint, Google Slides, or PDF presentation link.
 
 Sourcingo is a B2B industrial sourcing platform designed to connect buyers with manufacturers, simplify supplier discovery, and support smarter procurement decisions through AI-assisted recommendations.
 
