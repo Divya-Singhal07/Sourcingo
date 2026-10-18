@@ -10,7 +10,34 @@ import {
   allowRoles,
   type AuthRequest,
 } from "../middleware/auth";
+/** Distance in km between two lat/lng points (Haversine). */
+function distanceKm(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6371; // Earth radius in km
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
+/** Map UI radius labels to km. null = Global (no filter). */
+function parseRadiusKm(value: unknown): number | null {
+  if (typeof value !== "string") return null;
+  const v = value.trim().toLowerCase();
+  if (v === "global") return null;
+  if (v === "50" || v === "50 km") return 50;
+  if (v === "250" || v === "250 km") return 250;
+  if (v === "1000" || v === "1000 km") return 1000;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 const router = Router();
 
 // Browse active products without requiring login.
@@ -29,7 +56,15 @@ router.get("/products", async (req, res) => {
     typeof req.query.state === "string"
       ? req.query.state
       : undefined;
+  const radiusKm = parseRadiusKm(req.query.radius ?? req.query.radiusKm);
 
+  const buyerLat =
+    typeof req.query.lat === "string" ? Number(req.query.lat) : NaN;
+  const buyerLng =
+    typeof req.query.lng === "string" ? Number(req.query.lng) : NaN;
+
+  const hasBuyerPoint =
+    Number.isFinite(buyerLat) && Number.isFinite(buyerLng);
   let query = supabasePublic
     .from("products")
     .select(`
@@ -38,13 +73,21 @@ router.get("/products", async (req, res) => {
       moq, lead_time_days, certifications,
       sample_available, value_label, value_proposition,
       manufacturer:businesses!products_manufacturer_id_fkey(
-        id, name, city, state, industry, rating, rating_count
-      )
+  id, name, city, state, industry, rating, rating_count,
+  latitude, longitude
+)
     `)
     .eq("is_active", true)
     .order("created_at", { ascending: false })
     .limit(50);
-
+  console.log("radius filter debug", {
+    rawRadius: req.query.radius,
+    radiusKm,
+    buyerLat,
+    buyerLng,
+    hasBuyerPoint,
+  });
+  
   if (category) query = query.ilike("category", category);
   if (typeof req.query.minPrice === "string") {
     const minPrice = Number(req.query.minPrice);
@@ -66,7 +109,7 @@ router.get("/products", async (req, res) => {
   }
 
   // Filter by manufacturer location from the joined business.
-  const filtered = (data ?? []).filter((product: any) => {
+    const filtered = (data ?? []).filter((product: any) => {
     const manufacturer = product.manufacturer;
 
     if (city && manufacturer?.city?.toLowerCase() !== city.toLowerCase()) {
@@ -75,6 +118,19 @@ router.get("/products", async (req, res) => {
 
     if (state && manufacturer?.state?.toLowerCase() !== state.toLowerCase()) {
       return false;
+    }
+
+    // Radius filter (skip if Global or missing buyer/manufacturer coords)
+        if (radiusKm !== null && hasBuyerPoint) {
+      const mLat = Number(manufacturer?.latitude);
+      const mLng = Number(manufacturer?.longitude);
+      if (!Number.isFinite(mLat) || !Number.isFinite(mLng)) {
+        console.log("skip (no coords)", product.name, manufacturer);
+        return false;
+      }
+      const d = distanceKm(buyerLat, buyerLng, mLat, mLng);
+      console.log(product.name, "distanceKm=", d.toFixed(1), "limit=", radiusKm);
+      if (d > radiusKm) return false;
     }
 
     return true;
