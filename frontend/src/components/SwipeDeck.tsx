@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import type { ProductCard } from '../types';
-
+import { getProductImage } from '../productImages';
 interface SwipeDeckProps {
   products: ProductCard[];
   onSwipe: (product: ProductCard, action: 'like' | 'pass') => Promise<string | null>;
@@ -311,7 +311,7 @@ export const SwipeDeck: React.FC<SwipeDeckProps> = ({
                 >
                   <div className="h-64 w-full bg-slate-100 overflow-hidden">
                     <img
-                      src={nextProduct.image_url}
+                      src={getProductImage(nextProduct.name, nextProduct.image_url)}
                       alt={nextProduct.name}
                       className="w-full h-full object-cover object-center filter blur-[0.5px]"
                     />
@@ -366,7 +366,7 @@ export const SwipeDeck: React.FC<SwipeDeckProps> = ({
                   <img
                     alt={activeProduct.manufacturer.name}
                     className="w-full h-full object-cover object-center pointer-events-none"
-                    src={activeProduct.image_url}
+                    src={getProductImage(activeProduct.name, activeProduct.image_url)}
                     draggable={false}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none"></div>
@@ -608,7 +608,7 @@ export const SwipeDeck: React.FC<SwipeDeckProps> = ({
 
             <div className="w-full my-4 p-3 bg-[#f5f3f0] rounded-2xl border border-[#dcc0bf]/40 flex items-center gap-3 text-left">
               <img
-                src={matchModalProduct.image_url}
+                src={getProductImage(matchModalProduct.name, matchModalProduct.image_url)}
                 alt={matchModalProduct.name}
                 className="w-12 h-12 rounded-xl object-cover"
               />
