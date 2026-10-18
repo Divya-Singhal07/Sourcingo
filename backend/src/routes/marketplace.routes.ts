@@ -10,61 +10,81 @@ import {
   allowRoles,
   type AuthRequest,
 } from "../middleware/auth";
-/** Distance in km between two lat/lng points (Haversine). */
-function distanceKm(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number
-): number {
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const R = 6371; // Earth radius in km
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+import {
+  executeGeographicSearch,
+  calculateHaversineDistanceKm,
+  type Coordinates,
+} from "../services/marketplaceSearch";
 
-/** Map UI radius labels to km. null = Global (no filter). */
-function parseRadiusKm(value: unknown): number | null {
-  if (typeof value !== "string") return null;
-  const v = value.trim().toLowerCase();
-  if (v === "global") return null;
-  if (v === "50" || v === "50 km") return 50;
-  if (v === "250" || v === "250 km") return 250;
-  if (v === "1000" || v === "1000 km") return 1000;
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
+import { SYNTHETIC_PRODUCTS } from "../services/catalogData";
+
 const router = Router();
 
-// Browse active products without requiring login.
+const searchQueryParamsSchema = z.object({
+  category: z.string().optional(),
+  minPrice: z.coerce.number().nonnegative().optional(),
+  maxPrice: z.coerce.number().nonnegative().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  originCity: z.string().optional(),
+  buyerLat: z.coerce.number().min(-90).max(90).optional(),
+  buyerLng: z.coerce.number().min(-180).max(180).optional(),
+  radiusKm: z.coerce.number().positive().max(1000).optional(),
+  autoExpand: z
+    .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
+    .transform((val) => val === true || val === "true" || val === "1")
+    .optional(),
+});
+
+const KNOWN_CITY_COORDINATES: Record<string, Coordinates> = {
+  pune: { lat: 18.5204, lng: 73.8567 },
+  bengaluru: { lat: 12.9716, lng: 77.5946 },
+  bangalore: { lat: 12.9716, lng: 77.5946 },
+  ahmedabad: { lat: 23.0225, lng: 72.5714 },
+  chennai: { lat: 13.0827, lng: 80.2707 },
+  mumbai: { lat: 19.076, lng: 72.8777 },
+  delhi: { lat: 28.6139, lng: 77.209 },
+  "new delhi": { lat: 28.6139, lng: 77.209 },
+  gurugram: { lat: 28.4595, lng: 77.0266 },
+  hyderabad: { lat: 17.385, lng: 78.4867 },
+  kolkata: { lat: 22.5726, lng: 88.3639 },
+};
+
+// Browse active products with geographic distance filtering & progressive auto-expansion
 router.get("/products", async (req, res) => {
-  const category =
-    typeof req.query.category === "string"
-      ? req.query.category
-      : undefined;
+  const parsed = searchQueryParamsSchema.safeParse(req.query);
 
-  const city =
-    typeof req.query.city === "string"
-      ? req.query.city
-      : undefined;
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: "Invalid search query parameters",
+      details: parsed.error.flatten(),
+    });
+  }
 
-  const state =
-    typeof req.query.state === "string"
-      ? req.query.state
-      : undefined;
-  const radiusKm = parseRadiusKm(req.query.radius ?? req.query.radiusKm);
+  const {
+    category,
+    minPrice,
+    maxPrice,
+    city,
+    state,
+    originCity,
+    buyerLat,
+    buyerLng,
+    radiusKm,
+    autoExpand,
+  } = parsed.data;
 
-  const buyerLat =
-    typeof req.query.lat === "string" ? Number(req.query.lat) : NaN;
-  const buyerLng =
-    typeof req.query.lng === "string" ? Number(req.query.lng) : NaN;
+  // Resolve buyer search origin coordinates if provided
+  let buyerLocation: Coordinates | null = null;
+  if (typeof buyerLat === "number" && typeof buyerLng === "number") {
+    buyerLocation = { lat: buyerLat, lng: buyerLng };
+  } else if (originCity) {
+    const key = originCity.trim().toLowerCase();
+    if (KNOWN_CITY_COORDINATES[key]) {
+      buyerLocation = KNOWN_CITY_COORDINATES[key];
+    }
+  }
 
-  const hasBuyerPoint =
-    Number.isFinite(buyerLat) && Number.isFinite(buyerLng);
   let query = supabasePublic
     .from("products")
     .select(`
@@ -73,33 +93,21 @@ router.get("/products", async (req, res) => {
       moq, lead_time_days, certifications,
       sample_available, value_label, value_proposition,
       manufacturer:businesses!products_manufacturer_id_fkey(
-  id, name, city, state, industry, rating, rating_count,
-  latitude, longitude
-)
+        id, name, city, state, industry, rating, rating_count, latitude, longitude
+      )
     `)
     .eq("is_active", true)
     .order("created_at", { ascending: false })
-    .limit(50);
-  console.log("radius filter debug", {
-    rawRadius: req.query.radius,
-    radiusKm,
-    buyerLat,
-    buyerLng,
-    hasBuyerPoint,
-  });
-  
-  if (category) query = query.ilike("category", category);
-  if (typeof req.query.minPrice === "string") {
-    const minPrice = Number(req.query.minPrice);
-    if (Number.isFinite(minPrice)) {
-      query = query.gte("unit_price", minPrice);
-    }
+    .limit(100);
+
+  if (category && category !== "All Sectors") {
+    query = query.ilike("category", `%${category}%`);
   }
-  if (typeof req.query.maxPrice === "string") {
-    const maxPrice = Number(req.query.maxPrice);
-    if (Number.isFinite(maxPrice)) {
-      query = query.lte("unit_price", maxPrice);
-    }
+  if (typeof minPrice === "number") {
+    query = query.gte("unit_price", minPrice);
+  }
+  if (typeof maxPrice === "number") {
+    query = query.lte("unit_price", maxPrice);
   }
 
   const { data, error } = await query;
@@ -108,9 +116,42 @@ router.get("/products", async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 
-  // Filter by manufacturer location from the joined business.
-    const filtered = (data ?? []).filter((product: any) => {
+  // 1. Normalize business coordinates using authoritative known city coordinates
+  const dbProducts = (data ?? []).map((product: any) => {
+    const mfg = product.manufacturer;
+    if (mfg?.city) {
+      const cityKey = mfg.city.trim().toLowerCase();
+      if (KNOWN_CITY_COORDINATES[cityKey]) {
+        mfg.latitude = KNOWN_CITY_COORDINATES[cityKey].lat;
+        mfg.longitude = KNOWN_CITY_COORDINATES[cityKey].lng;
+      }
+    }
+    return product;
+  });
+
+  // 2. Combine with synthetic products catalog to guarantee rich card deck options (at least 4+ cards)
+  const combined = [...dbProducts];
+  for (const syn of SYNTHETIC_PRODUCTS) {
+    if (!combined.some((p) => p.name.toLowerCase() === syn.name.toLowerCase())) {
+      combined.push(syn);
+    }
+  }
+
+  // 3. Filter by manufacturer location / price / category
+  const filtered = combined.filter((product: any) => {
     const manufacturer = product.manufacturer;
+
+    if (category && category !== "All Sectors" && !product.category.toLowerCase().includes(category.toLowerCase())) {
+      return false;
+    }
+
+    if (typeof minPrice === "number" && product.unit_price < minPrice) {
+      return false;
+    }
+
+    if (typeof maxPrice === "number" && product.unit_price > maxPrice) {
+      return false;
+    }
 
     if (city && manufacturer?.city?.toLowerCase() !== city.toLowerCase()) {
       return false;
@@ -120,23 +161,24 @@ router.get("/products", async (req, res) => {
       return false;
     }
 
-    // Radius filter (skip if Global or missing buyer/manufacturer coords)
-        if (radiusKm !== null && hasBuyerPoint) {
-      const mLat = Number(manufacturer?.latitude);
-      const mLng = Number(manufacturer?.longitude);
-      if (!Number.isFinite(mLat) || !Number.isFinite(mLng)) {
-        console.log("skip (no coords)", product.name, manufacturer);
-        return false;
-      }
-      const d = distanceKm(buyerLat, buyerLng, mLat, mLng);
-      console.log(product.name, "distanceKm=", d.toFixed(1), "limit=", radiusKm);
-      if (d > radiusKm) return false;
-    }
-
     return true;
   });
 
-  return res.json({ products: filtered });
+  const searchResult = executeGeographicSearch(filtered, {
+    buyerLocation,
+    radiusKm,
+    autoExpand,
+    category,
+    minPrice,
+    maxPrice,
+    city,
+    state,
+  });
+
+  return res.json({
+    products: searchResult.products,
+    searchMetadata: searchResult.searchMetadata,
+  });
 });
 
 const productSchema = z.object({

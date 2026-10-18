@@ -68,6 +68,10 @@ app.use((
   res.status(500).json({ error: "Internal server error" });
 });
 
-app.listen(port, () => {
-  console.log(`Sourcingo backend running on http://localhost:${port}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(port, () => {
+    console.log(`Sourcingo backend running on http://localhost:${port}`);
+  });
+}
+
+export { app };

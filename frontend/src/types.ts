@@ -9,6 +9,21 @@ export interface Manufacturer {
   rating_count: number;
   verified: boolean;
   avatar?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  distance_km?: number | null;
+}
+
+export interface SearchMetadata {
+  origin: { lat: number; lng: number } | null;
+  initialRadiusKm: number | null;
+  finalRadiusKm: number | null;
+  autoExpand: boolean;
+  expanded: boolean;
+  initialMatchCount: number;
+  finalMatchCount: number;
+  maxRadiusReached: boolean;
+  expansionMessage: string | null;
 }
 
 export interface ProductCard {

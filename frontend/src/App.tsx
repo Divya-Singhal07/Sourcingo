@@ -45,7 +45,10 @@ export function App() {
   const [savedProducts, setSavedProducts] = useState<ProductCard[]>([INITIAL_PRODUCTS[0]]);
   const [dealRooms, setDealRooms] = useState<DealRoomItem[]>(MOCK_DEAL_ROOMS);
   const [priceTier, setPriceTier] = useState<'Budget' | 'Mid-Tier' | 'Enterprise'>('Mid-Tier');
-  const [searchRadius, setSearchRadius] = useState<'50 km' | '250 km' | '1000 km' | 'Global'>('250 km');
+  const [searchRadius, setSearchRadius] = useState<number>(50);
+  const [autoExpandRadius, setAutoExpandRadius] = useState<boolean>(true);
+  const [originCity, setOriginCity] = useState<string>('Pune');
+  const [searchMetadata, setSearchMetadata] = useState<import('./types').SearchMetadata | null>(null);
 
   const handleLoginSuccess = (user: AuthUser) => {
     localStorage.setItem(SESSION_KEY, JSON.stringify(user));
@@ -67,12 +70,17 @@ export function App() {
   };
 
   useEffect(() => {
-    fetchProducts().then((data) => {
-      if (data && data.length > 0) {
-        setProducts(data);
+    fetchProducts({
+      radiusKm: searchRadius,
+      autoExpand: autoExpandRadius,
+      originCity,
+    }).then((res) => {
+      if (res && res.products) {
+        setProducts(res.products);
+        setSearchMetadata(res.searchMetadata ?? null);
       }
     });
-  }, []);
+  }, [searchRadius, autoExpandRadius, originCity]);
 
   const handleSwipe = async (product: ProductCard, action: 'like' | 'pass'): Promise<string | null> => {
     await postSwipe(product.manufacturer.id, action);
@@ -146,6 +154,7 @@ export function App() {
               {currentTab === 'matchmaker' && (
                 <SwipeDeck
                   products={products}
+                  searchMetadata={searchMetadata}
                   onSwipe={handleSwipe}
                   onSaveBookmark={handleSaveBookmark}
                   onOpenAiAssistant={handleOpenAiWithPrompt}
@@ -188,8 +197,12 @@ export function App() {
               savedProducts={savedProducts}
               selectedPriceTier={priceTier}
               onChangePriceTier={setPriceTier}
-              searchRadius={searchRadius}
-              onChangeSearchRadius={setSearchRadius}
+              searchRadiusKm={searchRadius}
+              onChangeSearchRadiusKm={setSearchRadius}
+              autoExpandRadius={autoExpandRadius}
+              onChangeAutoExpandRadius={setAutoExpandRadius}
+              originCity={originCity}
+              onChangeOriginCity={setOriginCity}
               onOpenShortlist={() => setIsShortlistOpen(true)}
               onNavigateToDealrooms={() => setCurrentTab('dealrooms')}
               onOpenVerificationDossiers={() => setIsVerificationOpen(true)}

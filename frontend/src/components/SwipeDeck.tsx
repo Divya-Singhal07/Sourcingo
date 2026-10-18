@@ -4,6 +4,7 @@ import type { ProductCard } from '../types';
 import { getProductImage } from '../productImages';
 interface SwipeDeckProps {
   products: ProductCard[];
+  searchMetadata?: import('../types').SearchMetadata | null;
   onSwipe: (product: ProductCard, action: 'like' | 'pass') => Promise<string | null>;
   onSaveBookmark: (product: ProductCard) => void;
   onOpenAiAssistant: (initialPrompt?: string) => void;
@@ -29,6 +30,7 @@ const STAMP_THRESHOLD = 60;
 
 export const SwipeDeck: React.FC<SwipeDeckProps> = ({
   products,
+  searchMetadata,
   onSwipe,
   onSaveBookmark,
   onOpenAiAssistant,
@@ -40,6 +42,11 @@ export const SwipeDeck: React.FC<SwipeDeckProps> = ({
   const [aiPrompt, setAiPrompt] = useState('');
   const [matchModalProduct, setMatchModalProduct] = useState<ProductCard | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Reset to first card when products list updates
+  useEffect(() => {
+    setCurrentIndex(0);
+  }, [products]);
 
   // ─── Drag engine: all refs — zero React re-renders during drag ───────────
   const cardRef = useRef<HTMLDivElement>(null);
@@ -55,10 +62,26 @@ export const SwipeDeck: React.FC<SwipeDeckProps> = ({
   const activeProductRef = useRef<ProductCard | null>(null);
 
   const filteredProducts = products.filter(
-    (p) => selectedSector === 'All Sectors' || p.category === selectedSector
+    (p) =>
+      selectedSector === 'All Sectors' ||
+      p.category.toLowerCase().includes(selectedSector.toLowerCase()) ||
+      selectedSector.toLowerCase().includes(p.category.toLowerCase())
   );
   const activeProduct = filteredProducts[currentIndex];
-  const nextProduct = filteredProducts[currentIndex + 1];
+  // Next 3 cards in the deck stack behind active card for a 4-card physical stack
+  const stackProducts: ProductCard[] = [];
+  if (activeProduct) {
+    for (let i = 1; i <= 3; i++) {
+      if (currentIndex + i < filteredProducts.length) {
+        stackProducts.push(filteredProducts[currentIndex + i]);
+      } else if (filteredProducts.length > 1) {
+        const wrapIdx = (currentIndex + i) % filteredProducts.length;
+        if (filteredProducts[wrapIdx] && filteredProducts[wrapIdx].id !== activeProduct.id) {
+          stackProducts.push(filteredProducts[wrapIdx]);
+        }
+      }
+    }
+  }
 
   // Keep ref in sync
   useEffect(() => {
@@ -296,32 +319,85 @@ export const SwipeDeck: React.FC<SwipeDeckProps> = ({
           })}
         </div>
 
+        {/* Dynamic Radius Expansion Notification Banner */}
+        {searchMetadata?.expanded && searchMetadata.expansionMessage && (
+          <div className="w-full px-1">
+            <div className="bg-[#fff8f2] border border-[#f9dec3] rounded-2xl p-3 shadow-xs flex items-start gap-2.5">
+              <span className="material-symbols-outlined text-[19px] text-[#b45309] mt-0.5 shrink-0">
+                radar
+              </span>
+              <div className="flex flex-col flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10.5px] font-bold uppercase tracking-wider text-[#b45309]">
+                    Search Radius Expanded
+                  </span>
+                  <span className="text-[10px] text-[#564241]">
+                    ({searchMetadata.initialRadiusKm} km → {searchMetadata.finalRadiusKm} km)
+                  </span>
+                </div>
+                <p className="text-[12px] text-[#451a03] font-medium leading-snug mt-0.5">
+                  {searchMetadata.expansionMessage}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Center Discovery Deck & Card */}
         <div className="w-full flex-1 flex flex-col justify-center items-center gap-3.5 my-auto">
           {activeProduct ? (
             <div className="w-full relative select-none flex flex-col">
-              {/* Stack Background Card Preview */}
-              {nextProduct && (
-                <div
-                  className="absolute inset-0 rounded-2xl bg-white border border-[#4c000c]/10 shadow-sm overflow-hidden pointer-events-none opacity-80"
-                  style={{
-                    transform: 'scale(0.95) translateY(12px)',
-                    zIndex: 0,
-                  }}
-                >
-                  <div className="h-64 w-full bg-slate-100 overflow-hidden">
-                    <img
-                      src={getProductImage(nextProduct.name, nextProduct.image_url)}
-                      alt={nextProduct.name}
-                      className="w-full h-full object-cover object-center filter blur-[0.5px]"
-                    />
+              {/* Stack Background Cards (3 layers visible underneath the top card for at least 4 cards in the stack) */}
+              {stackProducts.map((cardProduct, stackIdx) => {
+                const layer = stackIdx + 1; // 1, 2, 3
+                const scale = 1 - layer * 0.04; // 0.96, 0.92, 0.88
+                const translateY = layer * 9; // 9px, 18px, 27px
+                const zIndex = 10 - layer; // 9, 8, 7
+                const opacity = Math.max(0.45, 1 - layer * 0.18); // 0.82, 0.64, 0.46
+
+                return (
+                  <div
+                    key={cardProduct.id || `stack-${stackIdx}`}
+                    className="absolute inset-0 rounded-2xl bg-white border border-[#4c000c]/12 shadow-[0_10px_25px_-5px_rgba(76,0,12,0.1)] overflow-hidden pointer-events-none transition-all duration-300"
+                    style={{
+                      transform: `scale(${scale}) translateY(${translateY}px)`,
+                      zIndex,
+                      opacity,
+                    }}
+                  >
+                    <div className="h-64 w-full bg-slate-100 overflow-hidden relative">
+                      <img
+                        src={getProductImage(cardProduct.name, cardProduct.image_url, cardProduct.category)}
+                        alt={cardProduct.name}
+                        className="w-full h-full object-cover object-center filter blur-[0.3px]"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/20"></div>
+                      <div className="absolute top-3 right-3 bg-[#fbf9f6]/95 backdrop-blur-xs px-2.5 py-0.5 rounded-full border border-[#4c000c]/10 text-[11px] font-semibold text-[#1b1c1a] shadow-xs">
+                        {cardProduct.value_label || 'Verified OEM'}
+                      </div>
+                    </div>
+                    <div className="p-4 bg-white flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-serif text-[18px] text-[#4c000c] font-medium truncate max-w-[240px]">
+                          {cardProduct.manufacturer.name}
+                        </span>
+                        <div className="flex items-center text-[#D97706] text-[13px] font-bold">
+                          ★ {cardProduct.manufacturer.rating || '4.8'}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[12px] text-[#564241]">
+                        <span className="material-symbols-outlined text-[14px] text-[#3b6662]">location_on</span>
+                        <span>{cardProduct.manufacturer.city}, {cardProduct.manufacturer.state}</span>
+                        {typeof cardProduct.manufacturer.distance_km === 'number' && (
+                          <span className="text-[#6c151e] font-semibold text-[10.5px] bg-[#ffdad9]/60 px-2 py-0.5 rounded-full ml-1">
+                            {cardProduct.manufacturer.distance_km} km away
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="p-4 bg-white">
-                    <div className="h-6 w-44 bg-slate-200 rounded animate-pulse"></div>
-                    <div className="h-4 w-32 bg-slate-100 rounded mt-2"></div>
-                  </div>
-                </div>
-              )}
+                );
+              })}
 
               {/* ── Top Interactive Card ── */}
               {/*
@@ -385,13 +461,22 @@ export const SwipeDeck: React.FC<SwipeDeckProps> = ({
                       <h1 className="font-serif text-[24px] text-[#4c000c] tracking-tight font-medium leading-tight">
                         {activeProduct.manufacturer.name}
                       </h1>
-                      <div className="flex items-center gap-1.5 text-[#564241] text-[13px] mt-0.5">
+                      <div className="flex items-center gap-1.5 text-[#564241] text-[13px] mt-0.5 flex-wrap">
                         <span className="material-symbols-outlined text-[16px] text-[#3b6662]">
                           location_on
                         </span>
                         <span>
                           {activeProduct.manufacturer.city}, {activeProduct.manufacturer.state}
                         </span>
+                        {typeof activeProduct.manufacturer.distance_km === 'number' && (
+                          <>
+                            <span className="mx-0.5 text-[#dcc0bf]">•</span>
+                            <span className="text-[#6c151e] font-semibold text-[11px] bg-[#ffdad9]/60 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[12px]">near_me</span>
+                              {activeProduct.manufacturer.distance_km} km away
+                            </span>
+                          </>
+                        )}
                         <span className="mx-0.5 text-[#dcc0bf]">•</span>
                         <span className="text-[#3b6662] font-semibold">
                           {activeProduct.certifications[0]}
@@ -434,13 +519,19 @@ export const SwipeDeck: React.FC<SwipeDeckProps> = ({
           ) : (
             <div className="w-full rounded-2xl bg-white border border-[#dcc0bf]/40 p-8 flex flex-col items-center justify-center text-center shadow-sm">
               <div className="w-16 h-16 rounded-full bg-[#bbe8e4]/60 text-[#3b6662] flex items-center justify-center mb-3">
-                <span className="material-symbols-outlined text-[32px]">fact_check</span>
+                <span className="material-symbols-outlined text-[32px]">
+                  {products.length === 0 ? 'travel_explore' : 'fact_check'}
+                </span>
               </div>
               <h3 className="text-xl font-serif text-[#4c000c] font-medium">
-                All Vetted Suppliers Reviewed
+                {products.length === 0
+                  ? 'No Matching Manufacturers Found'
+                  : 'All Vetted Suppliers Reviewed'}
               </h3>
-              <p className="text-xs text-[#564241] mt-1 max-w-xs">
-                Check Deal Rooms for active RFQs or reset filters to discover more global suppliers.
+              <p className="text-xs text-[#564241] mt-1 max-w-xs leading-relaxed">
+                {products.length === 0
+                  ? `No verified OEMs matched your search within ${searchMetadata?.finalRadiusKm || searchMetadata?.initialRadiusKm || 'the selected'} km. Try expanding your search radius or enabling automatic radius expansion in the filter menu.`
+                  : 'Check Deal Rooms for active RFQs or reset filters to discover more global suppliers.'}
               </p>
               <button
                 onClick={() => {
