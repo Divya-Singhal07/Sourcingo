@@ -4,7 +4,7 @@
 
 Website: YOUR_WEBSITE_URL — Replace with your deployed website URL.
 
-Project PPT: YOUR_PPT_URL — Replace with your PowerPoint, Google Slides, or PDF presentation link.
+Project PPT: https://docs.google.com/presentation/d/1_6h8nnF6j_0A-YwI6qLTD8TqZVzYyA9v/edit?usp=sharing&ouid=108919743515555346478&rtpof=true&sd=true
 
 Sourcingo is a B2B industrial sourcing platform designed to connect buyers with manufacturers, simplify supplier discovery, and support smarter procurement decisions through AI-assisted recommendations.
 
