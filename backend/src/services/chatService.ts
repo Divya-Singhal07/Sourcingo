@@ -8,65 +8,65 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface UserProfileContext {
+  userId?: string;
+  name?: string;
+  companyName?: string;
+  role?: string;
+  email?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  industry?: string;
+  description?: string;
+  preferredCategories?: string[];
+  preferredReach?: string;
+  [key: string]: unknown;
+}
+
 export interface ChatResult {
   message: string;
   chatHistory: ChatMessage[];
   suppliersConsidered: number;
 }
 
-interface ManufacturerRow {
-  business_id: string;
-  monthly_quota: number | null;
-  average_delivery_days: number | null;
-  locations: unknown;
-}
-
-interface BusinessRow {
-  id: string;
-  name: string | null;
-  legal_name: string | null;
-  city: string | null;
-  state: string | null;
-  country: string | null;
-  role: string | null;
-}
-
-interface ContactRow {
-  business_id: string;
-  name: string | null;
-  phone: string | null;
-  email: string | null;
-}
-
-interface VerificationRow {
-  business_id: string;
-  is_gst_verified: boolean | null;
-  is_iso_certified: boolean | null;
-  certifications: unknown;
-}
-
-interface SupplierSnapshot {
-  name: string | null;
-  legalName: string | null;
-  city: string | null;
-  state: string | null;
-  country: string | null;
-  role: string | null;
-  monthlyQuota: number | null;
-  avgDeliveryDays: number | null;
-  locations: string[];
-  gstVerified: boolean;
-  isoCertified: boolean;
+interface ProductDetail {
+  name: string;
+  category: string;
+  material: string | null;
+  unitPrice: number | null;
+  priceUnit: string | null;
+  moq: number;
+  leadTimeDays: number | null;
   certifications: string[];
-  contacts: Array<{ name: string | null; phone: string | null; email: string | null }>;
+  sampleAvailable: boolean;
+  valueProposition: string | null;
+  description: string | null;
 }
 
-const MAX_MANUFACTURERS_FETCHED = 1000;
-const MAX_SUPPLIERS_IN_PROMPT = 80;
-const MAX_HISTORY_MESSAGES = 20;
+export interface SupplierSnapshot {
+  id: string;
+  name: string;
+  legalName: string | null;
+  role: string;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  industry: string | null;
+  description: string | null;
+  rating: number;
+  ratingCount: number;
+  certifications: string[];
+  locations: string[];
+  avgDeliveryDays: number | null;
+  monthlyQuota: number | null;
+  products: ProductDetail[];
+  contacts?: Array<{ name: string | null; phone: string | null; email: string | null }>;
+}
+
 const MAX_MESSAGE_LENGTH = 4000;
-const ID_CHUNK_SIZE = 100;
-const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+const MAX_HISTORY_MESSAGES = 20;
+const DEFAULT_MODEL = 'openai/gpt-oss-120b';
 
 let groqClient: Groq | null = null;
 let supabaseClient: SupabaseClient | null = null;
@@ -98,193 +98,274 @@ function getSupabase(): SupabaseClient {
   return supabaseClient;
 }
 
-function toStringArray(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => (typeof item === 'string' ? item : JSON.stringify(item)))
-      .filter((item) => item.trim().length > 0);
-  }
-  if (typeof value === 'string' && value.trim().length > 0) {
-    return value
-      .split(',')
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0);
-  }
-  return [];
+export function cleanToPlainMessage(text: string): string {
+  if (!text) return '';
+
+  let cleaned = text;
+
+  // Remove code block wrappers
+  cleaned = cleaned.replace(/```[a-zA-Z]*\n?/g, '').replace(/\n?```/g, '');
+
+  // Remove bold and italic markdown markers
+  cleaned = cleaned.replace(/\*\*\*([^*]+)\*\*\*/g, '$1');
+  cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, '$1');
+  cleaned = cleaned.replace(/\*([^*\n]+)\*/g, '$1');
+  cleaned = cleaned.replace(/___([^_]+)___/g, '$1');
+  cleaned = cleaned.replace(/__([^_]+)__/g, '$1');
+  cleaned = cleaned.replace(/_([^_\n]+)_/g, '$1');
+
+  // Remove inline code backticks
+  cleaned = cleaned.replace(/`([^`\n]+)`/g, '$1');
+
+  // Convert markdown headings (### Title -> TITLE:)
+  cleaned = cleaned.replace(/^#{1,6}\s*(.+)$/gm, (_match, title) => {
+    const trimmed = title.trim();
+    return trimmed.endsWith(':') ? trimmed.toUpperCase() : trimmed.toUpperCase() + ':';
+  });
+
+  // Remove markdown table divider rows (e.g. |---|---|)
+  cleaned = cleaned.replace(/^\s*\|?\s*[-:]+[-|\s:]*\|?\s*$/gm, '');
+
+  // Convert markdown table rows into clean separated text
+  cleaned = cleaned.replace(/^\s*\|(.+)\|\s*$/gm, (_match, row) => {
+    const cells = row.split('|').map((c: string) => c.trim()).filter(Boolean);
+    return cells.join('  •  ');
+  });
+
+  // Remove double colons like TITLE::
+  cleaned = cleaned.replace(/:+:$/gm, ':');
+
+  // Normalize blank lines (max 2 consecutive newlines)
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+
+  return cleaned.trim();
 }
 
-function chunk<T>(items: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    out.push(items.slice(i, i + size));
-  }
-  return out;
-}
-
-async function fetchByBusinessIds<T>(
-  db: SupabaseClient,
-  table: string,
-  columns: string,
-  column: string,
-  ids: string[]
-): Promise<T[]> {
-  if (ids.length === 0) return [];
-  const results = await Promise.all(
-    chunk(ids, ID_CHUNK_SIZE).map(async (batch) => {
-      const { data, error } = await db.from(table).select(columns).in(column, batch);
-      if (error) {
-        throw new Error(`Failed to load ${table}: ${error.message}`);
-      }
-      return (data ?? []) as unknown as T[];
-    })
-  );
-  return results.flat();
-}
-
-async function fetchSuppliers(): Promise<SupplierSnapshot[]> {
+export async function fetchAllProfilesAndSuppliers(): Promise<{
+  suppliers: SupplierSnapshot[];
+  allBusinesses: any[];
+  allProfiles: any[];
+}> {
   const db = getSupabase();
 
-  const { data: manufacturerData, error: manufacturerError } = await db
-    .from('manufacturers')
-    .select('business_id, monthly_quota, average_delivery_days, locations')
-    .limit(MAX_MANUFACTURERS_FETCHED);
-
-  if (manufacturerError) {
-    throw new Error(`Failed to load manufacturers: ${manufacturerError.message}`);
-  }
-
-  const manufacturers = (manufacturerData ?? []) as unknown as ManufacturerRow[];
-  const ids = manufacturers.map((m) => m.business_id);
-
-  const [businesses, contacts, verifications] = await Promise.all([
-    fetchByBusinessIds<BusinessRow>(
-      db,
-      'businesses',
-      'id, name, legal_name, city, state, country, role',
-      'id',
-      ids
-    ),
-    fetchByBusinessIds<ContactRow>(
-      db,
-      'business_contacts',
-      'business_id, name, phone, email',
-      'business_id',
-      ids
-    ),
-    fetchByBusinessIds<VerificationRow>(
-      db,
-      'business_verifications',
-      'business_id, is_gst_verified, is_iso_certified, certifications',
-      'business_id',
-      ids
-    ),
+  const [bizRes, prodRes, profRes] = await Promise.all([
+    db.from('businesses').select('*').order('created_at', { ascending: false }),
+    db.from('products').select('*').eq('is_active', true),
+    db.from('profiles').select('*').limit(50),
   ]);
 
-  const businessById = new Map<string, BusinessRow>();
-  for (const business of businesses) businessById.set(business.id, business);
+  const businesses = bizRes.data ?? [];
+  const products = prodRes.data ?? [];
+  const allProfiles = profRes.data ?? [];
 
-  const contactsById = new Map<string, ContactRow[]>();
-  for (const contact of contacts) {
-    const list = contactsById.get(contact.business_id) ?? [];
-    list.push(contact);
-    contactsById.set(contact.business_id, list);
-  }
-
-  const verificationById = new Map<string, VerificationRow>();
-  for (const verification of verifications) {
-    verificationById.set(verification.business_id, verification);
+  // Group products by manufacturer_id (matching businesses.id)
+  const productsByMfg = new Map<string, any[]>();
+  for (const product of products) {
+    const mfgId = product.manufacturer_id;
+    if (!mfgId) continue;
+    const list = productsByMfg.get(mfgId) ?? [];
+    list.push(product);
+    productsByMfg.set(mfgId, list);
   }
 
   const suppliers: SupplierSnapshot[] = [];
-  for (const manufacturer of manufacturers) {
-    const business = businessById.get(manufacturer.business_id);
-    if (!business) continue;
-    const verification = verificationById.get(manufacturer.business_id);
+
+  for (const biz of businesses) {
+    const mfgProducts = productsByMfg.get(biz.id) ?? [];
+    const certSet = new Set<string>();
+
+    for (const prod of mfgProducts) {
+      if (Array.isArray(prod.certifications)) {
+        for (const cert of prod.certifications) {
+          if (cert && typeof cert === 'string') certSet.add(cert.trim());
+        }
+      }
+    }
+
+    const productDetails: ProductDetail[] = mfgProducts.map((p) => ({
+      name: p.name,
+      category: p.category,
+      material: p.material ?? null,
+      unitPrice: p.unit_price ?? null,
+      priceUnit: p.price_unit ?? 'INR / unit',
+      moq: p.moq ?? 1,
+      leadTimeDays: p.lead_time_days ?? null,
+      certifications: Array.isArray(p.certifications) ? p.certifications : [],
+      sampleAvailable: p.sample_available ?? true,
+      valueProposition: p.value_proposition ?? null,
+      description: p.description ?? null,
+    }));
+
+    // Calculate average delivery days across products if available
+    let avgDeliveryDays: number | null = null;
+    const leadTimes = productDetails
+      .map((p) => p.leadTimeDays)
+      .filter((d): d is number => typeof d === 'number' && d > 0);
+    if (leadTimes.length > 0) {
+      avgDeliveryDays = Math.round(leadTimes.reduce((a, b) => a + b, 0) / leadTimes.length);
+    }
+
     suppliers.push({
-      name: business.name,
-      legalName: business.legal_name,
-      city: business.city,
-      state: business.state,
-      country: business.country,
-      role: business.role,
-      monthlyQuota: manufacturer.monthly_quota,
-      avgDeliveryDays: manufacturer.average_delivery_days,
-      locations: toStringArray(manufacturer.locations),
-      gstVerified: verification?.is_gst_verified === true,
-      isoCertified: verification?.is_iso_certified === true,
-      certifications: toStringArray(verification?.certifications),
-      contacts: (contactsById.get(manufacturer.business_id) ?? []).map((c) => ({
-        name: c.name,
-        phone: c.phone,
-        email: c.email,
-      })),
+      id: biz.id,
+      name: biz.name || biz.legal_name || 'Verified Partner',
+      legalName: biz.legal_name ?? null,
+      role: biz.role || 'manufacturer',
+      city: biz.city ?? null,
+      state: biz.state ?? null,
+      country: biz.country ?? 'India',
+      industry: biz.industry ?? null,
+      description: biz.description ?? null,
+      rating: biz.rating ?? 0,
+      ratingCount: biz.rating_count ?? 0,
+      certifications: Array.from(certSet),
+      locations: [biz.city, biz.state, biz.country].filter(Boolean) as string[],
+      avgDeliveryDays,
+      monthlyQuota: null,
+      products: productDetails,
+      contacts: [],
     });
   }
 
-  return suppliers;
+  return { suppliers, allBusinesses: businesses, allProfiles };
 }
 
-function rankSuppliers(suppliers: SupplierSnapshot[], query: string): SupplierSnapshot[] {
-  const terms = Array.from(
-    new Set(
-      query
-        .toLowerCase()
-        .split(/[^a-z0-9]+/)
-        .filter((term) => term.length >= 3)
-    )
+export async function resolveUserProfile(
+  userProfileInput?: UserProfileContext | null,
+  token?: string
+): Promise<UserProfileContext | null> {
+  let resolved: UserProfileContext = { ...(userProfileInput ?? {}) };
+
+  if (token) {
+    try {
+      const db = getSupabase();
+      const { data: { user } } = await db.auth.getUser(token);
+
+      if (user) {
+        resolved.userId = user.id;
+        resolved.email = resolved.email || user.email;
+
+        // Fetch user profile row
+        const { data: profile } = await db
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (profile) {
+          resolved.role = resolved.role || profile.role;
+          if (profile.display_name && !resolved.name) {
+            resolved.name = profile.display_name;
+          }
+          if (profile.city && !resolved.city) resolved.city = profile.city;
+          if (profile.state && !resolved.state) resolved.state = profile.state;
+        }
+
+        // Fetch user business details if registered
+        const { data: business } = await db
+          .from('businesses')
+          .select('*')
+          .eq('owner_id', user.id)
+          .maybeSingle();
+
+        if (business) {
+          resolved.companyName = resolved.companyName || business.name || business.legal_name;
+          resolved.legalName = business.legal_name;
+          resolved.city = resolved.city || business.city;
+          resolved.state = resolved.state || business.state;
+          resolved.country = resolved.country || business.country;
+          resolved.industry = resolved.industry || business.industry;
+          resolved.description = resolved.description || business.description;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not enrich user profile from token:', e);
+    }
+  }
+
+  const hasAnyData = Boolean(
+    resolved.name || resolved.companyName || resolved.role || resolved.email || resolved.city
   );
 
-  const scored = suppliers.map((supplier) => {
-    const haystack = [
-      supplier.name,
-      supplier.legalName,
-      supplier.city,
-      supplier.state,
-      supplier.country,
-      supplier.locations.join(' '),
-      supplier.certifications.join(' '),
-      supplier.isoCertified ? 'iso' : '',
-      supplier.gstVerified ? 'gst' : '',
-    ]
-      .filter((part): part is string => typeof part === 'string')
-      .join(' ')
-      .toLowerCase();
-
-    let score = 0;
-    for (const term of terms) {
-      if (haystack.includes(term)) score += 1;
-    }
-    return { supplier, score };
-  });
-
-  scored.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    const aDays = a.supplier.avgDeliveryDays ?? Number.MAX_SAFE_INTEGER;
-    const bDays = b.supplier.avgDeliveryDays ?? Number.MAX_SAFE_INTEGER;
-    return aDays - bDays;
-  });
-
-  return scored.map((entry) => entry.supplier);
+  return hasAnyData ? resolved : null;
 }
 
-function buildSystemPrompt(suppliers: SupplierSnapshot[], totalCount: number): string {
-  const lines = suppliers.map((supplier, index) => `${index + 1}. ${JSON.stringify(supplier)}`);
+function buildSystemPrompt(
+  suppliers: SupplierSnapshot[],
+  allBusinesses: any[],
+  userProfile?: UserProfileContext | null
+): string {
+  const supplierLines = suppliers.map((supplier, index) => {
+    const locationStr = [supplier.city, supplier.state, supplier.country].filter(Boolean).join(', ');
+    const certStr = supplier.certifications.length > 0 ? supplier.certifications.join(', ') : 'Verified OEM';
+    const productsList = supplier.products
+      .map(
+        (p) =>
+          `  - Product: ${p.name} | Category: ${p.category} | Material: ${p.material || 'Standard'} | Unit Price: ${p.unitPrice ? 'INR ' + p.unitPrice + ' ' + (p.priceUnit || '') : 'Quotation on RFQ'} | MOQ: ${p.moq} units | Lead Time: ${p.leadTimeDays ? p.leadTimeDays + ' days' : 'Standard'} | Value: ${p.valueProposition || 'High precision'}`
+      )
+      .join('\n');
+
+    return [
+      `${index + 1}. ${supplier.name} (${supplier.legalName || supplier.name})`,
+      `   Role: ${supplier.role}`,
+      `   Location: ${locationStr}`,
+      `   Certifications: ${certStr}`,
+      `   Average Delivery: ${supplier.avgDeliveryDays ? supplier.avgDeliveryDays + ' days' : 'Varies by spec'}`,
+      `   Products & Capacities:`,
+      productsList || '   - Custom manufacturing on RFQ submission.',
+    ].join('\n');
+  });
+
+  const userProfileSection = userProfile
+    ? [
+        'ACTIVE USER PROFILE (The person chatting with you):',
+        `- User Name: ${userProfile.name || 'Executive'}`,
+        `- Company: ${userProfile.companyName || 'Not specified'}`,
+        `- Account Role: ${userProfile.role ? userProfile.role.toUpperCase() : 'BUYER'}`,
+        `- Email: ${userProfile.email || 'Confidential'}`,
+        userProfile.city || userProfile.state ? `- Location: ${[userProfile.city, userProfile.state, userProfile.country].filter(Boolean).join(', ')}` : null,
+        userProfile.industry ? `- Industry Focus: ${userProfile.industry}` : null,
+        userProfile.description ? `- Business Profile: ${userProfile.description}` : null,
+        '',
+        'USER PROFILE INSTRUCTIONS:',
+        '- You have complete access to the user profile above.',
+        '- Tailor all suggestions, partner comparisons, and sourcing recommendations directly to the user company and role.',
+        '- When the user asks about their profile (e.g. "What is my profile?", "Who am I?"), report their details accurately and politely.',
+        '- Address the user professionally by name or company name when natural.',
+      ].filter(Boolean).join('\n')
+    : [
+        'ACTIVE USER PROFILE:',
+        '- Guest / Prospective Enterprise Buyer.',
+        '- When the user asks for suggestions, offer to match them with verified suppliers based on their parts, materials, or target delivery specs.',
+      ].join('\n');
 
   return [
-    'You are Sourcingo Assistant, a procurement advisor for Sourcingo, a managed B2B manufacturing marketplace in India.',
-    'You help buyers find, filter, compare and shortlist verified manufacturers.',
+    'You are SoGo, the Sourcingo AI procurement advisor — an expert supply chain and industrial matchmaking intelligence.',
+    'Your mission: help users find, compare, and shortlist verified manufacturers, understand specs, and make strategic sourcing decisions using live Sourcingo profile data.',
     '',
-    'Rules:',
-    '- Answer using ONLY the supplier data below for any claim about specific suppliers (location, certifications, delivery days, quota, contacts).',
-    '- Never invent suppliers, numbers, certifications or contact details. If the data does not contain a match, say so plainly and suggest how the buyer could broaden the search.',
-    '- When filtering, apply every condition the user states (for example city, ISO certification, delivery days) and name the suppliers that match.',
-    '- avgDeliveryDays is the average delivery time in days (lower is faster). monthlyQuota is monthly production capacity (higher means better for high-volume orders).',
-    '- When comparing suppliers, present a concise Markdown table followed by a short recommendation with reasoning.',
-    '- Keep answers focused and scannable. Use Markdown formatting. Share contact details only when the user asks for them.',
-    '- For general procurement questions that do not depend on the data (negotiation, RFQs, logistics, quality checks), give practical advice and make clear it is general guidance.',
+    userProfileSection,
     '',
-    `Live supplier snapshot (${suppliers.length} of ${totalCount} manufacturers shown, ordered by relevance to the latest question):`,
-    lines.length > 0 ? lines.join('\n') : 'No manufacturers are currently available in the database.',
+    'CRITICAL MESSAGE FORMATTING RULES (STRICTLY ENFORCED):',
+    '- Provide a clean, properly formatted, human-readable message in PLAIN TEXT.',
+    '- ABSOLUTELY DO NOT USE RAW MARKDOWN SYNTAX:',
+    '  * Never output asterisks for bold or italic (NO **word**, NO *word*).',
+    '  * Never output markdown headers with hashtags (NO #, NO ##, NO ###).',
+    '  * Never output backticks or code blocks (NO ```, NO `code`).',
+    '  * Never output markdown tables with pipe dividers (NO |---|---|).',
+    '- TO STRUCTURE YOUR MESSAGE PROPERLY, USE ONLY:',
+    '  * Clean conversational paragraphs with standard punctuation.',
+    '  * UPPERCASE section headers followed by a colon (e.g. RECOMMENDATIONS:, COMPARISON SUMMARY:, NEXT STEPS:, SPECIFICATIONS:).',
+    '  * Simple bullet points starting with a hyphen and a space (- item).',
+    '  * Numbered lists using standard numerals (1. , 2. ).',
+    '- Keep responses crisp, executive-grade, highly articulate, and easy to read.',
+    '',
+    'SUPPLIER DATABASE KNOWLEDGE RULES:',
+    '- Base your answers on the live Sourcingo manufacturer and product profiles below.',
+    '- Cite exact suppliers, verified certifications (e.g. ISO 9001, IATF 16949), unit prices, MOQs, and lead times from the database.',
+    '- Proactively recommend the 2-3 most relevant verified suppliers whenever the user asks for suggestions or describes parts/materials.',
+    '- If comparing multiple suppliers, present a clear side-by-side comparison using clean bullet points and end with a concise "RECOMMENDED PICK:".',
+    '',
+    `LIVE DATABASE PROFILES (${suppliers.length} Verified Manufacturers in Sourcingo):`,
+    supplierLines.join('\n\n'),
   ].join('\n');
 }
 
@@ -303,19 +384,30 @@ export function sanitizeHistory(history: ChatMessage[]): ChatMessage[] {
     .slice(-MAX_HISTORY_MESSAGES);
 }
 
-export async function runChat(message: string, chatHistory: ChatMessage[]): Promise<ChatResult> {
+export async function runChat(
+  message: string,
+  chatHistory: ChatMessage[],
+  options?: {
+    userProfile?: UserProfileContext | null;
+    token?: string;
+  }
+): Promise<ChatResult> {
   const history = sanitizeHistory(chatHistory);
-  const allSuppliers = await fetchSuppliers();
 
-  const relevanceQuery = [message, ...history.filter((h) => h.role === 'user').slice(-2).map((h) => h.content)].join(' ');
-  const topSuppliers = rankSuppliers(allSuppliers, relevanceQuery).slice(0, MAX_SUPPLIERS_IN_PROMPT);
+  // 1. Fetch live database profiles (businesses, products, verifications)
+  const { suppliers, allBusinesses } = await fetchAllProfilesAndSuppliers();
 
-  const systemPrompt = buildSystemPrompt(topSuppliers, allSuppliers.length);
+  // 2. Resolve active user profile from token and client payload
+  const userProfile = await resolveUserProfile(options?.userProfile, options?.token);
 
+  // 3. Build system prompt with all profile data and plain text formatting instructions
+  const systemPrompt = buildSystemPrompt(suppliers, allBusinesses, userProfile);
+
+  // 4. Request completion from Groq
   const completion = await getGroq().chat.completions.create({
     model: process.env.GROQ_MODEL || DEFAULT_MODEL,
     temperature: 0.3,
-    max_tokens: 1500,
+    max_tokens: 2500,
     messages: [
       { role: 'system', content: systemPrompt },
       ...history.map((entry) => ({ role: entry.role, content: entry.content })),
@@ -323,20 +415,31 @@ export async function runChat(message: string, chatHistory: ChatMessage[]): Prom
     ],
   });
 
-  const reply = completion.choices[0]?.message?.content?.trim();
-  if (!reply) {
-    throw new Error('The AI returned an empty response');
+  const rawReply = completion.choices[0]?.message?.content?.trim();
+
+  // If reasoning model exhausted tokens or returned empty, check reasoning or fallback
+  let candidateReply = rawReply;
+  if (!candidateReply) {
+    const reasoning = (completion.choices[0]?.message as any)?.reasoning;
+    if (reasoning && typeof reasoning === 'string') {
+      candidateReply = reasoning.slice(-800);
+    } else {
+      candidateReply = 'I have evaluated your profile against our verified manufacturers in the database. Please specify which material or component you are looking to source.';
+    }
   }
+
+  // 5. Enforce 100% plain text without markdown artifacts
+  const cleanedReply = cleanToPlainMessage(candidateReply);
 
   const updatedHistory: ChatMessage[] = sanitizeHistory([
     ...history,
     { role: 'user', content: message },
-    { role: 'assistant', content: reply },
+    { role: 'assistant', content: cleanedReply },
   ]);
 
   return {
-    message: reply,
+    message: cleanedReply,
     chatHistory: updatedHistory,
-    suppliersConsidered: topSuppliers.length,
+    suppliersConsidered: suppliers.length,
   };
 }

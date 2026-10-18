@@ -136,11 +136,18 @@ export async function fetchMatches() {
 
 export async function sendChatMessage(
   message: string,
-  chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+  chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+  userProfile?: {
+    name?: string;
+    companyName?: string;
+    role?: string;
+    email?: string;
+    [key: string]: unknown;
+  } | null
 ) {
   const res = await apiFetch('/api/chat', {
     method: 'POST',
-    body: JSON.stringify({ message, chatHistory }),
+    body: JSON.stringify({ message, chatHistory, userProfile }),
   });
 
   const data = await res.json();

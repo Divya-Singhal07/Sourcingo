@@ -1,7 +1,14 @@
 // aiService.ts
 import Groq from 'groq-sdk';
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+let _groq: Groq | null = null;
+function getGroq(): Groq {
+  if (_groq) return _groq;
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error('GROQ_API_KEY environment variable is not set');
+  _groq = new Groq({ apiKey });
+  return _groq;
+}
 
 export interface Manufacturer {
   id: string;
@@ -49,12 +56,12 @@ Provide your analysis strictly as a JSON object with these keys:
 - "runnerUpReason": (string) Brief reason why they came in second.
 `;
 
-  const chatCompletion = await groq.chat.completions.create({
+  const chatCompletion = await getGroq().chat.completions.create({
     messages: [
       { role: 'system', content: 'You are an enterprise procurement AI assistant. Always reply in clean, valid JSON.' },
       { role: 'user', content: prompt }
     ],
-    model: 'openai/gpt-oss-20b', // <--- Change model name here
+    model: 'openai/gpt-oss-120b',
     response_format: { type: 'json_object' },
     temperature: 0.2
   });

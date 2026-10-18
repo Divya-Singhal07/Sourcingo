@@ -213,6 +213,7 @@ export function App() {
               isOpen={isAiModalOpen}
               onClose={() => setIsAiModalOpen(false)}
               initialPrompt={aiInitialPrompt}
+              currentUser={currentUser}
             />
 
             {/* Verification Dossiers Modal */}
