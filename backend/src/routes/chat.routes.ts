@@ -24,7 +24,11 @@ export function createChatRouter(requireAuth?: RequestHandler): Router {
   const guards: RequestHandler[] = requireAuth ? [requireAuth] : [];
 
   router.post('/', ...guards, async (req: Request, res: Response): Promise<void> => {
-    const body = (req.body ?? {}) as { message?: unknown; chatHistory?: unknown };
+    const body = (req.body ?? {}) as {
+      message?: unknown;
+      chatHistory?: unknown;
+      userProfile?: unknown;
+    };
 
     if (typeof body.message !== 'string' || body.message.trim().length === 0) {
       res.status(400).json({ error: '`message` is required and must be a non-empty string.' });
@@ -45,8 +49,18 @@ export function createChatRouter(requireAuth?: RequestHandler): Router {
       return;
     }
 
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+    const userProfile =
+      typeof body.userProfile === 'object' && body.userProfile !== null
+        ? (body.userProfile as Record<string, unknown>)
+        : undefined;
+
     try {
-      const result = await runChat(message, chatHistory);
+      const result = await runChat(message, chatHistory, {
+        userProfile,
+        token,
+      });
       res.status(200).json({
         message: result.message,
         chatHistory: result.chatHistory,
