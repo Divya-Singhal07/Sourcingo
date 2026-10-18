@@ -16,31 +16,89 @@ function authHeaders(): HeadersInit {
   };
 }
 
+
+const API_BASE_URL = (
+  import.meta.env.VITE_API_URL || ""
+).replace(/\/+$/, "");
+
 async function apiFetch(path: string, options: RequestInit = {}) {
-  const res = await fetch(path, {
+  const url = `${API_BASE_URL}${path}`;
+
+  const res = await fetch(url, {
     ...options,
     headers: {
       ...authHeaders(),
       ...(options.headers || {}),
     },
   });
+
   return res;
 }
 
+
 // ---------- Products (public) ----------
-export async function fetchProducts(): Promise<ProductCard[]> {
+export interface FetchProductsParams {
+  category?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  radiusKm?: number;
+  autoExpand?: boolean;
+  originCity?: string;
+  buyerLat?: number;
+  buyerLng?: number;
+}
+
+export interface FetchProductsResult {
+  products: ProductCard[];
+  searchMetadata?: import('./types').SearchMetadata;
+}
+
+export async function fetchProducts(
+  params?: FetchProductsParams
+): Promise<FetchProductsResult> {
   try {
-    const res = await apiFetch('/api/marketplace/products');
-    if (!res.ok) return INITIAL_PRODUCTS;
+    const query = new URLSearchParams();
+    if (params?.category && params.category !== 'All Sectors') {
+      query.set('category', params.category);
+    }
+    if (typeof params?.minPrice === 'number') {
+      query.set('minPrice', params.minPrice.toString());
+    }
+    if (typeof params?.maxPrice === 'number') {
+      query.set('maxPrice', params.maxPrice.toString());
+    }
+    if (typeof params?.radiusKm === 'number') {
+      query.set('radiusKm', params.radiusKm.toString());
+    }
+    if (typeof params?.autoExpand === 'boolean') {
+      query.set('autoExpand', params.autoExpand.toString());
+    }
+    if (params?.originCity) {
+      query.set('originCity', params.originCity);
+    }
+    if (typeof params?.buyerLat === 'number') {
+      query.set('buyerLat', params.buyerLat.toString());
+    }
+    if (typeof params?.buyerLng === 'number') {
+      query.set('buyerLng', params.buyerLng.toString());
+    }
+
+    const qs = query.toString();
+    const res = await apiFetch(`/api/marketplace/products${qs ? `?${qs}` : ''}`);
+    if (!res.ok) return { products: INITIAL_PRODUCTS };
 
     const data = await res.json();
-    if (!data.products?.length) return INITIAL_PRODUCTS;
+    if (!data.products?.length) {
+      return { products: [], searchMetadata: data.searchMetadata };
+    }
 
-    return data.products.map((p: any) => ({
+    const mapped: ProductCard[] = data.products.map((p: any) => ({
       id: p.id,
       name: p.name,
       category: p.category,
-      image_url: p.image_url || 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=1200&q=80',
+      image_url:
+        p.image_url ||
+        'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=1200&q=80',
       material: p.material || 'Engineered Industrial Alloy',
       unit_price: p.unit_price ?? 0,
       price_unit: p.price_unit || 'INR / unit',
@@ -55,15 +113,21 @@ export async function fetchProducts(): Promise<ProductCard[]> {
         name: p.manufacturer?.name || 'Vetted Partner',
         city: p.manufacturer?.city || '',
         state: p.manufacturer?.state || '',
+        country: p.manufacturer?.country,
         industry: p.manufacturer?.industry || '',
         rating: p.manufacturer?.rating || 0,
         rating_count: p.manufacturer?.rating_count || 0,
         verified: true,
         avatar: undefined,
+        latitude: p.manufacturer?.latitude ?? null,
+        longitude: p.manufacturer?.longitude ?? null,
+        distance_km: p.manufacturer?.distance_km ?? null,
       },
     }));
+
+    return { products: mapped, searchMetadata: data.searchMetadata };
   } catch {
-    return INITIAL_PRODUCTS;
+    return { products: INITIAL_PRODUCTS };
   }
 }
 
